@@ -985,12 +985,21 @@ async function handleFetch(): Promise<void> {
     // draft 있으면 복원 (작성 중이던 코드 자동 복구)
     maybeRestoreDraft();
 
-    // LeetCode submission 자동 가져오기 버튼은 LeetCode 전용 — 다른 플랫폼은 hide
-    // (Programmers / AtCoder는 자동 fetch 미지원, 사용자가 직접 paste)
+    // submission 자동 가져오기 버튼 — LeetCode / AtCoder 지원 (둘 다 임베드 윈도우)
+    // Programmers / Codeforces는 미지원 (v1.5+ Phase 2.5/4.5)
     const submissionRow = document.querySelector('.submission-pull-row') as HTMLElement | null;
-    const isLeetCode = !state.problem.platform || state.problem.platform === 'LeetCode';
+    const platform = state.problem.platform;
+    const supportsAutoFetch =
+      !platform || platform === 'LeetCode' || platform === 'AtCoder';
     if (submissionRow) {
-      submissionRow.classList.toggle('hidden', !isLeetCode);
+      submissionRow.classList.toggle('hidden', !supportsAutoFetch);
+    }
+    // 버튼 라벨 plat별 분기
+    const fetchBtn = $btn('fetch-submission-btn');
+    const fetchBtnContent = fetchBtn.querySelector('.btn-content') as HTMLElement | null;
+    if (fetchBtnContent) {
+      const platName = platform === 'AtCoder' ? 'AtCoder' : 'LeetCode';
+      fetchBtnContent.textContent = `↩ ${platName}에서 최근 통과 코드 가져오기`;
     }
 
     const platformLabel =
@@ -1685,17 +1694,32 @@ function updatePastePreview(): void {
   preview.classList.add('hidden');
 }
 
-// ─── pull from embed ─────────────────────────────────────────
+// ─── pull from embed (LeetCode / AtCoder 둘 다 시도) ─────────────────────
+// 어느 임베드 윈도우든 현재 URL이 있으면 끌어옴. 둘 다 있으면 LeetCode 우선.
+// 둘 다 없으면 친절 에러.
 async function handlePullFromEmbed(): Promise<void> {
   const btn = $btn('pull-embed-btn');
   btn.disabled = true;
   try {
-    const r = await window.api.getLeetCodeUrl();
-    if (!r.ok || !r.url) {
-      setStatus('임베드 LeetCode 윈도우가 열려있지 않아요 — 헤더의 ↗ 버튼으로 먼저 열어주세요', 'error');
+    // 우선순위: LeetCode → AtCoder
+    let url: string | null = null;
+    const lc = await window.api.getLeetCodeUrl();
+    if (lc.ok && lc.url) {
+      url = lc.url;
+    } else {
+      const ac = await window.api.getAtcoderUrl();
+      if (ac.ok && ac.url) url = ac.url;
+    }
+
+    if (!url) {
+      setStatus(
+        '임베드 윈도우가 열려있지 않아요 — 헤더의 LeetCode 또는 AtCoder 버튼으로 먼저 열어주세요',
+        'error'
+      );
       return;
     }
-    $input('problem-input').value = r.url;
+
+    $input('problem-input').value = url;
     $('clear-input-btn').classList.remove('hidden');
     updatePastePreview();
     handleFetch();
@@ -1757,7 +1781,7 @@ $select('starter-lang-select').addEventListener('change', (e: Event) => {
 
 $btn('open-leetcode-btn').addEventListener('click', () => window.api.openLeetCode());
 $btn('open-programmers-btn').addEventListener('click', () => window.api.openPlatformSite('Programmers'));
-$btn('open-atcoder-btn').addEventListener('click', () => window.api.openPlatformSite('AtCoder'));
+$btn('open-atcoder-btn').addEventListener('click', () => window.api.openAtcoder());
 $btn('open-codeforces-btn').addEventListener('click', () => window.api.openPlatformSite('Codeforces'));
 
 // 번역 영역의 LeetCode 링크 클릭 시 현재 선택된 시작 언어를 URL hash에 담아 임베드로
@@ -1783,7 +1807,7 @@ $('translation-output').addEventListener('click', (e: Event) => {
 
 $btn('pull-embed-btn').addEventListener('click', handlePullFromEmbed);
 
-// step-3: LeetCode 최근 Accepted submission 자동 가져오기
+// step-3: 플랫폼별 최근 Accepted submission 자동 가져오기 (LeetCode / AtCoder)
 async function handleFetchSubmission(): Promise<void> {
   if (!state.problem) {
     setStatus('먼저 문제를 가져와주세요', 'error');
@@ -1792,11 +1816,30 @@ async function handleFetchSubmission(): Promise<void> {
   const btn = $btn('fetch-submission-btn');
   const originalContent = (btn.querySelector('.btn-content') as HTMLElement)?.innerHTML || '';
   btn.disabled = true;
-  setButtonLoading('fetch-submission-btn', 'LeetCode에서 코드 가져오는 중...');
-  setStatus('LeetCode 세션으로 최근 통과 코드 fetch...', 'busy');
+
+  const platform = state.problem.platform;
+  const platName = platform === 'AtCoder' ? 'AtCoder' : 'LeetCode';
+  setButtonLoading('fetch-submission-btn', `${platName}에서 코드 가져오는 중...`);
+  setStatus(`${platName} 세션으로 최근 통과 코드 fetch...`, 'busy');
 
   try {
-    const r = await window.api.fetchSubmission(state.problem.titleSlug);
+    // 플랫폼별 payload 분기
+    let r;
+    if (platform === 'AtCoder') {
+      // AtCoderProblem은 contestId + taskId 필드 있음
+      const acProblem = state.problem as { contestId?: string; taskId?: string };
+      if (!acProblem.contestId || !acProblem.taskId) {
+        throw new Error('AtCoder 문제 메타데이터 누락 — 다시 불러오기 해주세요');
+      }
+      r = await window.api.fetchSubmission({
+        platform: 'AtCoder',
+        contestId: acProblem.contestId,
+        taskId: acProblem.taskId,
+      });
+    } else {
+      // LeetCode (legacy string 형태)
+      r = await window.api.fetchSubmission(state.problem.titleSlug);
+    }
     if (!r.ok) throw new Error(r.error);
 
     // 받은 lang에 맞춰 select 변경 (해당 lang snippet 있어야)

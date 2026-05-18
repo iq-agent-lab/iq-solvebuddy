@@ -8,7 +8,7 @@
 
 iq-agent-lab 행성 중 하나. 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
-**현재 버전: v1.3.0** — LeetCode + 프로그래머스 + AtCoder + Codeforces (Phase 1-4 완료, 메타데이터 정교화). 백준(BOJ)은 보류 (서버 이슈), 각 플랫폼 submission 자동 fetch는 Phase 2.5-4.5에서 추가 예정. 자세한 진척은 [로드맵](#로드맵) 참조.
+**현재 버전: v1.4.0** — LeetCode + 프로그래머스 + AtCoder + Codeforces (Phase 1-4 완료). **AtCoder submission 자동 fetch (Phase 3.5)** 추가. Codeforces/프로그래머스 submission 자동 fetch는 Phase 4.5/2.5에서 추가 예정. 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
 
 > 플랫폼별 statement 정책: **LeetCode/AtCoder/Codeforces**는 영어 원문 → 한국어 번역. **프로그래머스**는 한국어 원문 → 정리만 (HTML→마크다운). **AtCoder**는 영어 우선 + 일본어 fallback.
 
@@ -661,11 +661,19 @@ iq-solvebuddy/
 - [x] **Programmers favicon fix** (v1.3.1) — 직접 favicon URL이 hotlink 차단되어 깨짐 → Google S2 favicon proxy로 4개 플랫폼 모두 통일
 - [x] **Codeforces Cloudflare 우회** (v1.3.1) — node fetch가 HTTP 403으로 차단되던 문제. hidden BrowserWindow에 loadURL → outerHTML 추출. partition pool로 재사용 (첫 호출 ~3-5s, 재호출 ~1-2s)
 
-### v1.4+ (다음 후보) — submission 자동 fetch
+### v1.4.x (완료) — Phase 3.5: AtCoder 임베드 + submission 자동 fetch
 
-- [ ] **AtCoder submission 자동 fetch (Phase 3.5)** — `persist:atcoder` 임베드 윈도우. 로그인 세션 활용해 마지막 통과 코드 가져오기
-- [ ] **Codeforces submission 자동 fetch (Phase 4.5)** — `persist:codeforces` 임베드 + submission API 또는 scraping
+- [x] **AtCoder 임베드 윈도우** — `persist:atcoder` 영속 세션. 헤더 AtCoder 버튼 클릭 시 임베드 열림 (외부 브라우저 → 임베드). INJECT_SCRIPT chip 버튼 + console-message sentinel + URL pull/push (LeetCode 패턴 평행)
+- [x] **AtCoder submission 자동 fetch** — `/submissions/me?f.Task={taskId}&f.Status=AC` HTML scraping. 임베드 세션 cookies 활용. 가장 최근 AC submission ID → `<pre id="submission-code">` 코드 추출
+- [x] **AtCoder lang 매핑** — "C++ 23 (gcc 12.2)" / "Python (3.11.4)" 등 다양한 표기 → 우리 langSlug 매핑 (substring 검사)
+- [x] **fetch-submission IPC generic화** — payload union (`{platform, ...}`). LeetCode/AtCoder 분기. string 인자 backward-compat
+- [x] **pull-embed-btn 우선순위 로직** — LeetCode → AtCoder fallback. 둘 다 안 떠있으면 친절 에러
+
+### v1.5+ (다음 후보) — Phase 4.5 / Phase 2.5
+
+- [ ] **Codeforces submission 자동 fetch (Phase 4.5)** — `persist:codeforces` 임베드 (이미 browserFetch가 사용 중인 partition 재활용) + submission HTML scraping
 - [ ] **프로그래머스 임베드 + submission (Phase 2.5)** — `persist:programmers` 임베드. Lv 3+ 로그인 필요 문제도 가져오기
+- [ ] **AtCoder Accepted 사전 확인** — LeetCode 패턴 적용. 풀이 업로드 전 AC 있는지 확인 → 없으면 dialog override
 - [ ] **백준 BOJ (Phase 5)** — 보류 (서버 종료 이슈). 향후 재개 시 진행
 
 - [ ] **풀이 통계 native sync** — better-sqlite3 또는 localStorage → gist 백업 (디바이스 간 sync)
