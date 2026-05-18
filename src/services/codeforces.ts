@@ -9,19 +9,17 @@
 // 난이도: 문제 페이지의 rating tag (예: *1500) 또는 별표 표기.
 //
 // 인증: 비로그인 접근 OK. submission 자동 fetch는 v1.2+ Phase 4.5에서 임베드 활용.
+//
+// ⚠️ Cloudflare 우회: Codeforces는 node fetch를 HTTP 403으로 차단 (일반 UA여도).
+// → BrowserWindow에서 진짜 Chromium으로 로드 → outerHTML 추출.
+// hidden 윈도우라 사용자 노출 없음. persist:codeforces 파티션으로 cookies/cache 재사용.
 
 import * as cheerio from 'cheerio';
 import { CodeforcesProblem } from '../types';
+import { fetchHtmlViaBrowser } from './browserFetch';
 
 const BASE_URL = 'https://codeforces.com';
-
-// Codeforces는 단순 fetch는 안 막지만 일부 region/Cloudflare 보호 — 일반 브라우저 UA 필요
-const COMMON_HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
-  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-};
+const PARTITION = 'persist:codeforces';
 
 export interface CodeforcesProblemRef {
   contestId: string; // 예: '1234'
@@ -144,36 +142,38 @@ function extractExamples(_$: cheerio.CheerioAPI): string {
 }
 
 export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise<CodeforcesProblem> {
-  // problemset URL이 더 안정적 (contest URL은 진행 중이면 403)
+  // problemset URL이 더 안정적 (contest URL은 진행 중이면 차단)
   const url = `${BASE_URL}/problemset/problem/${ref.contestId}/${ref.index}`;
   const displayUrl = url;
 
-  const res = await fetch(url, { headers: COMMON_HEADERS });
-  if (!res.ok) {
-    if (res.status === 404) {
-      throw new Error(
-        `Codeforces에서 문제 ${ref.contestId}${ref.index}를 찾을 수 없어요 — URL을 확인해주세요`
-      );
-    }
-    if (res.status === 403) {
-      throw new Error(
-        `Codeforces 접근 차단 (HTTP 403) — Cloudflare 또는 region 차단 가능성. 잠시 후 다시 시도해주세요`
-      );
-    }
-    if (res.status === 429) {
-      throw new Error(`Codeforces 요청 제한 (HTTP 429) — 잠시 후 다시 시도해주세요`);
-    }
-    throw new Error(`Codeforces 응답 오류 (HTTP ${res.status})`);
+  // BrowserWindow로 로드 (Cloudflare 우회). 첫 호출 5초 정도, 재호출 1-2초
+  let html: string;
+  try {
+    html = await fetchHtmlViaBrowser(url, PARTITION);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Codeforces 페이지 로드 실패: ${msg}`);
   }
 
-  const html = await res.text();
   const $ = cheerio.load(html);
+
+  // 페이지 자체에 "Statement is not available on English language" 또는 404 처리
+  // BrowserWindow는 200 OK라도 본문이 에러 페이지일 수 있어 selector 기반 판단
+  const pageNotFound =
+    $('title').text().toLowerCase().includes('not found') ||
+    $('body').text().toLowerCase().includes('codeforces did not respond');
+
+  if (pageNotFound) {
+    throw new Error(
+      `Codeforces에서 문제 ${ref.contestId}${ref.index}를 찾을 수 없어요 — URL을 확인해주세요`
+    );
+  }
 
   const title = extractTitle($, ref.index);
   if (!title) {
     throw new Error(
-      `Codeforces 페이지에서 제목을 찾을 수 없어요 — 페이지 구조 변경 가능성. ` +
-        `잠시 후 다시 시도해주세요`
+      `Codeforces 페이지에서 제목을 찾을 수 없어요 — 페이지 구조 변경 또는 ` +
+        `Cloudflare 챌린지 미통과 가능성. 잠시 후 다시 시도해주세요`
     );
   }
 

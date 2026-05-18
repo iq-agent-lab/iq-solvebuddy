@@ -652,11 +652,14 @@ iq-solvebuddy/
 - [x] **AtCoder title 추출 버그 fix** — "A - N-Choice Question"에서 task letter "A" 제거 후 task name만 추출 (`stripTaskLetter` 헬퍼)
 - [x] **헤더 바로가기 버튼 4개** — LeetCode(임베드) / Programmers / AtCoder / Codeforces (외부 브라우저). submission 자동 fetch는 LeetCode만이라 임베드도 LeetCode만 유지
 
-### v1.3.x (완료) — 메타데이터 정교화
+### v1.3.x (완료) — 메타데이터 정교화 + 렌더링 fix
 
 - [x] **AtCoder starter code 메시지 fix** — LeetCode 하드코딩 메시지를 platform별로 분기 (`noSnippetMessage(problem)`). AtCoder/CF는 "시작 코드 제공 안 함", Programmers는 비로그인 케이스 안내
 - [x] **Codeforces tag 추출** — `.tag-box`에서 rating(`*1500`)과 algorithmic tags(greedy/dp 등) 통합 순회로 분리. 태그가 prompt에 포함되어 번역에 도움
 - [x] **AtCoder difficulty rating** — kenkoooo.com `problem-models.json` (IRT 기반). 30MB+ JSON gzip ~5-10MB · 24h disk 캐시 + 메모리 캐시 + 부팅 prewarm. 표기: "300점 · 난이도 1234" / 음수면 "≤0"
+- [x] **KaTeX 수식 렌더링** (v1.3.1) — `$...$` / `$$...$$` 자동 변환. `marked-katex-extension` + katex CSS/폰트 로컬 번들. 잘못된 LaTeX은 raw 텍스트 fallback
+- [x] **Programmers favicon fix** (v1.3.1) — 직접 favicon URL이 hotlink 차단되어 깨짐 → Google S2 favicon proxy로 4개 플랫폼 모두 통일
+- [x] **Codeforces Cloudflare 우회** (v1.3.1) — node fetch가 HTTP 403으로 차단되던 문제. hidden BrowserWindow에 loadURL → outerHTML 추출. partition pool로 재사용 (첫 호출 ~3-5s, 재호출 ~1-2s)
 
 ### v1.4+ (다음 후보) — submission 자동 fetch
 

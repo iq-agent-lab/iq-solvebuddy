@@ -2,7 +2,7 @@
 
 > 외부 사용자용은 README. 이 파일은 **Claude 세션 작업 컨텍스트** (어떻게 작업·왜 이 결정·다음 어디로).
 >
-> **마지막 업데이트**: 2026-05-18 (v1.3.0)
+> **마지막 업데이트**: 2026-05-18 (v1.3.1)
 
 **기호**: ✦ 시그니처 / ✓ 유지 / ❌ 하지 말 것
 
@@ -120,6 +120,9 @@ npm run release            # version patch + push + GitHub Actions
 | starter code 메시지 = 플랫폼별 분기 | 유지 | LeetCode 하드코딩 메시지가 AtCoder/CF/Programmers에서 어색. `noSnippetMessage(problem)` 헬퍼가 platform별 메시지 반환. AtCoder/CF는 "시작 코드 제공 안 함" 명시, Programmers는 비로그인 케이스 안내. starter-block 자체는 hide 안 함 — lang select가 그 안에 있어 항상 필요 |
 | Codeforces tag 추출 = `.tag-box` 통합 순회 | 유지 | rating(`*1500`)과 algorithmic tags(`greedy`, `dp` 등)가 같은 `.tag-box` selector. 한 번 순회하며 별표 정규식으로 rating 분리, 나머지를 topicTags로. 길이 가드(< 40자) + alpha 필터로 noise 제거. tag가 prompt에 포함되어 번역에 도움 |
 | AtCoder difficulty rating = kenkoooo.com API | 유지 | AtCoder 페이지엔 점수만 있음. AtCoder Problems(`kenkoooo.com/atcoder/resources/problem-models.json`)가 IRT 기반 difficulty 제공. **30MB+ JSON** (gzip ~5-10MB) — 24h TTL disk 캐시 + 메모리 캐시. 부팅 시 background prewarm으로 첫 fetch 대기 시간 제거. 실패 silent (점수만 표시되어도 무해). 표기: "300점 · 난이도 1234" / 음수 rating은 "≤0" |
+| KaTeX 수식 렌더링 | 유지 | LLM이 `$...$` / `$$...$$` 형식으로 출력하지만 marked 기본은 raw 텍스트. `marked-katex-extension`으로 자동 KaTeX HTML 변환. main 프로세스에서 변환 (Node 호환), renderer는 `katex.min.css` + 폰트(woff2)만 load. throwOnError:false로 잘못된 LaTeX은 원본 텍스트 fallback (앱 크래시 방지). CSP `font-src 'self'` 추가 필요 |
+| 외부 사이트 favicon = Google S2 proxy | 유지 | Programmers 직접 favicon URL이 hotlink 차단으로 깨짐 (CORS 또는 referer). `https://www.google.com/s2/favicons?domain={D}&sz=64` proxy 사용 — 항상 fallback 있음, 캐싱됨, 빠름. 일관성 위해 4개 플랫폼 모두 S2 (LeetCode는 임베드 버튼이라 기존 favicon 유지) |
+| Cloudflare 우회 = BrowserWindow fetch | 유지 | Codeforces는 node fetch를 HTTP 403으로 차단 (Cloudflare JS challenge). hidden BrowserWindow에 loadURL → outerHTML 추출. 진짜 Chromium이라 챌린지 통과. 같은 partition으로 window pool 재사용 (메모리 + 속도). 첫 호출 ~3-5s, 재호출 ~1-2s. `closeAllBrowserFetchWindows()`를 app.will-quit에서 호출 (cleanup) |
 | 풀이 레포 root README 자동 인덱스 | 유지 | uploadSolution이 매 풀이마다 root README marker 영역만 update. `<!-- iq-leetbuddy:problems:start/end -->` 사이만 touch — 사용자 자유 텍스트(위/아래) 보존. 같은 slug는 languages 합치고 savedAt 갱신. 실패 silent (풀이 commit 우선) |
 | 풀이 통계 localStorage (not SQLite) | 유지 | `better-sqlite3` native module은 electron rebuild 필요 + 플랫폼별 까다로움. localStorage JSON 배열로 단순화 — 오프라인 안전, 디바이스 sync 안 됨. 가치 90% 보존. 📊 모달에서 요약/난이도/언어/월별/최근 표시 |
 | 자동 업데이트 = polling (not electron-updater) | 유지 | electron-updater는 macOS unsigned 앱에서 squirrel.mac cert 요구로 fail. cert 비용 + 복잡도 큼. 대신 GitHub Releases API polling + footer pill로 알림만 — 다운로드는 기존 zip 흐름. dev 모드는 `app.isPackaged`로 skip |
@@ -212,6 +215,7 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 | `src/services/atcoder.ts` | AtCoder HTML scraping (cheerio, v1.1+). 영어/일본어 statement |
 | `src/services/codeforces.ts` | Codeforces HTML scraping (cheerio, v1.2+). `.problem-statement` 전체 + rating/tags 분리 |
 | `src/services/atcoderModels.ts` | AtCoder difficulty rating 캐시 (kenkoooo.com API, v1.3+). 24h TTL + 메모리 캐시 + 부팅 prewarm |
+| `src/services/browserFetch.ts` | hidden BrowserWindow 기반 HTML fetch (v1.3.1+). Cloudflare 우회용. partition별 window pool 재사용 |
 | `src/services/translator.ts` | Claude translate(LeetCode/AtCoder/Codeforces) / organize(Programmers) — platform dispatch, streaming |
 | `src/services/annotator.ts` | Claude annotate (회고 생성), streaming. Problem union 수용 |
 | `src/services/pipeline.ts` | `fetchAndTranslate` + `annotateAndUpload` 오케스트레이션 (platform 분기) |
