@@ -3,7 +3,7 @@
 // Programmers (한국어 원문): 정리만 (번역 X, 마크다운 형식 정돈)
 
 import Anthropic from '@anthropic-ai/sdk';
-import { LeetCodeProblem, ProgrammersProblem, AtCoderProblem, Problem } from '../types';
+import { LeetCodeProblem, ProgrammersProblem, AtCoderProblem, CodeforcesProblem, Problem } from '../types';
 import { withRetry } from '../util/language';
 
 let _client: Anthropic | null = null;
@@ -189,16 +189,79 @@ Output: ...
 6. 마크다운 외 다른 설명/주석 추가 금지`;
 }
 
+// Codeforces — 영어 원문 → 한국어 번역. statement HTML이 .problem-statement 전체로
+// 헤더(time/memory limit) + body + .sample-tests + .note 다 포함.
+function buildCodeforcesPrompt(problem: CodeforcesProblem): string {
+  return `너는 Codeforces 문제를 한국어로 옮기는 번역가야. 다음 영어 원문을 자연스러운 한국어 마크다운으로 변환해줘.
+
+[메타]
+- 콘테스트: ${problem.contestId}
+- Problem index: ${problem.index}
+- 제목: ${problem.title}
+- 난이도(rating): ${problem.difficulty}
+
+[원문 HTML — .problem-statement 전체]
+${problem.content}
+
+다음 형식으로만 출력해줘 (코드 블록이나 추가 설명 없이 바로 마크다운 본문):
+
+# ${problem.contestId}${problem.index}. ${problem.title}
+
+> **${problem.difficulty}** · CF ${problem.contestId} · [원문](${problem.url})
+
+## 문제
+
+(원문 description을 매끄러운 한국어로. HTML 태그는 마크다운으로 변환)
+
+## 입력
+
+(Input 형식 설명)
+
+## 출력
+
+(Output 형식 설명)
+
+## 제약 조건
+
+- (time limit, memory limit, 입력 범위 등 불릿)
+
+## 입출력 예시
+
+### Example 1
+\`\`\`
+Input: ...
+Output: ...
+\`\`\`
+**설명**: ... (Note 영역이 있으면 여기에)
+
+(sample-tests 안의 모든 예시 포함)
+
+---
+
+규칙:
+1. 영어 원문을 자연스러운 한국어로 번역. 어색한 직역 금지
+2. 변수명, 함수명, 자료구조명(예: array, hash map)은 영어 그대로
+3. 수식은 \`$...$\` 또는 \`$$...$$\` (Codeforces는 MathJax — 원문 형식 보존)
+4. **이미지 보존**: \`<img src="...">\`가 있으면 \`![설명](URL)\` 마크다운으로. URL 변경 금지
+5. .sample-tests 안의 .input/.output 영역을 정확히 입출력 예시로 변환
+6. .note 영역이 있으면 "## 노트" 또는 입출력 예시의 "**설명**" 으로 통합
+7. 마크다운 외 다른 설명/주석 추가 금지`;
+}
+
 export async function translateProblem(
   problem: Problem,
   onStream?: StreamCallback
 ): Promise<string> {
-  // platform 분기 — LeetCode/AtCoder는 번역, Programmers는 정리
+  // platform 분기:
+  //   LeetCode/AtCoder/Codeforces는 영어→한국어 번역
+  //   Programmers는 정리(원문 한국어 보존)
   let prompt: string;
   if (problem.platform === 'Programmers') {
     prompt = buildProgrammersPrompt(problem as ProgrammersProblem);
   } else if (problem.platform === 'AtCoder') {
     prompt = buildAtcoderPrompt(problem as AtCoderProblem);
+  } else if (problem.platform === 'Codeforces') {
+    prompt = buildCodeforcesPrompt(problem as CodeforcesProblem);
   } else {
     prompt = buildPrompt(problem as LeetCodeProblem);
   }

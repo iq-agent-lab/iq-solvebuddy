@@ -3,6 +3,7 @@
 import { fetchProblem, resolveTitleSlugByFrontendId } from './leetcode';
 import { fetchProgrammersProblem } from './programmers';
 import { fetchAtcoderProblem } from './atcoder';
+import { fetchCodeforcesProblem } from './codeforces';
 import { translateProblem, StreamCallback } from './translator';
 import { annotateCode } from './annotator';
 import { uploadSolution, createRepoIfMissing } from './github';
@@ -19,6 +20,32 @@ export async function fetchAndTranslate(
   onStream?: StreamCallback
 ): Promise<FetchProblemResult> {
   const parsed = parseProblemInput(input);
+
+  // ─── Codeforces 분기 ────────────────────────────────
+  // cache key: 'contestId-index' (예: '1234-A')
+  if (parsed.platform === 'Codeforces') {
+    if (!parsed.contestId || !parsed.cfIndex) {
+      throw new Error('Codeforces URL이 올바르지 않아요 — codeforces.com/{contest|problemset}/.../{문제번호}/{인덱스} 형식의 URL을 입력해주세요');
+    }
+    const cacheKey = `${parsed.contestId}-${parsed.cfIndex}`;
+
+    const cached = await readTranslationCache('Codeforces', cacheKey);
+    if (cached) {
+      onProgress?.('cached');
+      return cached;
+    }
+
+    onProgress?.('fetching');
+    const problem = await fetchCodeforcesProblem({ contestId: parsed.contestId, index: parsed.cfIndex });
+
+    onProgress?.('translating');
+    const translation = await translateProblem(problem, onStream);
+    const translationHtml = await renderMarkdown(translation);
+
+    const result = { problem, translation, translationHtml };
+    await writeTranslationCache('Codeforces', cacheKey, result);
+    return result;
+  }
 
   // ─── AtCoder 분기 ────────────────────────────────
   // taskId가 globally unique (contest prefix 포함) → cache key로 충분

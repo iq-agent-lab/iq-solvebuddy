@@ -12,7 +12,7 @@ function cacheDir(): string {
   return path.join(app.getPath('userData'), 'cache', 'translations');
 }
 
-type CachePlatform = 'LeetCode' | 'Programmers' | 'AtCoder';
+type CachePlatform = 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces';
 
 // platform 별 cache key prefix — 같은 식별자라도 플랫폼 간 분리
 // LeetCode는 prefix 없이 (legacy 호환), 나머지는 platform 이름 lowercase prefix

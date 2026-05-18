@@ -586,17 +586,24 @@ async function handleBackfill(): Promise<void> {
     }
 
     // IndexEntry → SolutionRecord (languages 배열 → 각 lang별 record로 펼침)
-    // v1.0+: LeetCode + Programmers. v1.1+: AtCoder 추가.
-    //   LeetCode/Programmers는 problemId가 숫자 (parseInt OK), AtCoder는 string ('abc300_a')
+    // v1.0+: LeetCode + Programmers. v1.1+: AtCoder. v1.2+: Codeforces.
+    //   LeetCode/Programmers는 problemId가 숫자 (parseInt OK)
+    //   AtCoder는 string ('abc300_a'), Codeforces는 string ('1234A')
     const backfilled: SolutionRecord[] = [];
     for (const e of indexEntries) {
-      // Codeforces/BOJ는 미지원 — Phase 4-5에서
-      if (e.platform !== 'LeetCode' && e.platform !== 'Programmers' && e.platform !== 'AtCoder') continue;
+      // BOJ는 미지원 — Phase 5에서
+      if (
+        e.platform !== 'LeetCode' &&
+        e.platform !== 'Programmers' &&
+        e.platform !== 'AtCoder' &&
+        e.platform !== 'Codeforces'
+      ) continue;
       const ts = new Date(e.savedAt).getTime();
       const savedAt = isNaN(ts) ? Date.now() : ts;
-      // AtCoder는 taskId(string) 그대로, 나머지는 parseInt
+      // AtCoder/Codeforces는 string ID 그대로, 나머지는 parseInt
+      const isStringId = e.platform === 'AtCoder' || e.platform === 'Codeforces';
       const frontendId: number | string =
-        e.platform === 'AtCoder' ? e.problemId : parseInt(e.problemId, 10);
+        isStringId ? e.problemId : parseInt(e.problemId, 10);
       if (typeof frontendId === 'number' && isNaN(frontendId)) continue;
       for (const lang of e.languages) {
         backfilled.push({
@@ -967,6 +974,7 @@ async function handleFetch(): Promise<void> {
     const platformLabel =
       state.problem.platform === 'Programmers' ? '[프로그래머스] '
       : state.problem.platform === 'AtCoder' ? '[AtCoder] '
+      : state.problem.platform === 'Codeforces' ? '[Codeforces] '
       : '';
     setStatus(`${platformLabel}${state.problem.questionFrontendId}. ${state.problem.title} · 준비 완료`, 'ok');
   } catch (e: any) {
@@ -1057,15 +1065,18 @@ function showUploadSuccess(result: UploadResultShape): void {
   // 풀이 통계에 기록 — state에 problem/language 보존되어 있음
   // platform 분기:
   //   LeetCode/Programmers는 frontendId가 숫자 (parseInt OK)
-  //   AtCoder는 taskId가 string ('abc300_a') — string 그대로 저장
+  //   AtCoder는 taskId가 string ('abc300_a'), Codeforces는 'contestId+index' string ('1234A')
   if (state.problem && state.selectedLang) {
     const platform: SolutionRecord['platform'] =
       state.problem.platform === 'Programmers' ? 'Programmers'
       : state.problem.platform === 'AtCoder' ? 'AtCoder'
+      : state.problem.platform === 'Codeforces' ? 'Codeforces'
       : 'LeetCode';
+    const isStringId =
+      state.problem.platform === 'AtCoder' || state.problem.platform === 'Codeforces';
     const frontendId: number | string =
-      state.problem.platform === 'AtCoder'
-        ? state.problem.questionFrontendId  // taskId 그대로
+      isStringId
+        ? state.problem.questionFrontendId  // taskId / contestId+index 그대로
         : parseInt(state.problem.questionFrontendId, 10);
     recordSolution({
       platform,
@@ -1550,13 +1561,19 @@ async function handleVerifyGithub(): Promise<void> {
 // src/util/language.ts의 parseProblemInput과 동일 로직 (renderer는 import 불가)
 // 숫자 입력은 client에서 미리보기만 — 실제 해결은 main의 GraphQL 호출
 interface ClientParsed {
-  kind: 'slug' | 'numeric' | 'programmers' | 'atcoder' | 'empty';
+  kind: 'slug' | 'numeric' | 'programmers' | 'atcoder' | 'codeforces' | 'empty';
   value: string;
 }
 
 function parseProblemInputClient(input: string): ClientParsed {
   const trimmed = input.trim();
   if (!trimmed) return { kind: 'empty', value: '' };
+
+  // Codeforces URL — contest 또는 problemset 형식
+  const cfMatch = trimmed.match(/codeforces\.com\/(?:contest|problemset\/problem)\/(\d+)\/([A-Z]\d*)/i);
+  if (cfMatch) {
+    return { kind: 'codeforces', value: `${cfMatch[1]}${cfMatch[2].toUpperCase()}` };
+  }
 
   // AtCoder URL — atcoder.jp/contests/{contestId}/tasks/{taskId}
   const atcoderPattern = /atcoder\.jp\/contests\/[a-z0-9_]+\/tasks\/([a-z0-9_]+)/i;
@@ -1603,6 +1620,13 @@ function updatePastePreview(): void {
   }
 
   const parsed = parseProblemInputClient(raw);
+
+  // Codeforces URL — contestId+index 미리보기 (예: '1234A')
+  if (parsed.kind === 'codeforces') {
+    preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">Codeforces ${parsed.value}</span> 으로 가져오기`;
+    preview.classList.remove('hidden');
+    return;
+  }
 
   // AtCoder URL — taskId 미리보기
   if (parsed.kind === 'atcoder') {
@@ -1710,6 +1734,9 @@ $select('starter-lang-select').addEventListener('change', (e: Event) => {
 });
 
 $btn('open-leetcode-btn').addEventListener('click', () => window.api.openLeetCode());
+$btn('open-programmers-btn').addEventListener('click', () => window.api.openPlatformSite('Programmers'));
+$btn('open-atcoder-btn').addEventListener('click', () => window.api.openPlatformSite('AtCoder'));
+$btn('open-codeforces-btn').addEventListener('click', () => window.api.openPlatformSite('Codeforces'));
 
 // 번역 영역의 LeetCode 링크 클릭 시 현재 선택된 시작 언어를 URL hash에 담아 임베드로
 $('translation-output').addEventListener('click', (e: Event) => {

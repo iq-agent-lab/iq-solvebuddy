@@ -73,7 +73,27 @@ export interface AtCoderProblem {
   url: string;
 }
 
-export type Problem = LeetCodeProblem | ProgrammersProblem | AtCoderProblem;
+/**
+ * Codeforces 문제 — HTML scraping (공식 API는 problemset 메타데이터만).
+ * statement는 영어 → 한국어 번역 (LeetCode 패턴 재사용).
+ */
+export interface CodeforcesProblem {
+  platform: 'Codeforces';
+  contestId: string; // 예: '1234'
+  index: string;     // 예: 'A', 'B1'
+  /** Problem union 호환 — '{contestId}{index}' (예: '1234A') */
+  questionFrontendId: string;
+  title: string;
+  titleSlug: string; // `{contestId}-{index}-{slug}` 형식
+  content: string;   // HTML
+  difficulty: string; // 예: '★1500' (Codeforces rating)
+  exampleTestcases: string;
+  topicTags: LeetCodeTag[]; // CF tags 추출 가능하지만 비워둠 (v1.3+)
+  codeSnippets: CodeSnippet[]; // 비어있음
+  url: string;
+}
+
+export type Problem = LeetCodeProblem | ProgrammersProblem | AtCoderProblem | CodeforcesProblem;
 
 export interface UploadPayload {
   problem: Problem;
@@ -166,6 +186,9 @@ export interface IqApi {
   openLeetCode: (url?: string) => Promise<{ ok: boolean }>;
   getLeetCodeUrl: () => Promise<{ ok: boolean; url: string | null }>;
   pullLeetCodeUrl: () => Promise<{ ok: boolean }>;
+  openPlatformSite: (
+    platform: 'Programmers' | 'AtCoder' | 'Codeforces'
+  ) => Promise<{ ok: boolean; error?: string }>;
   fetchSubmission: (
     titleSlug: string
   ) => Promise<IpcResult<{ code: string; langSlug: string; langName: string }>>;

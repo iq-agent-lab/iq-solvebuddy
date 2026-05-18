@@ -93,7 +93,7 @@ export async function withRetry<T>(
 //   - 1, 2024                (숫자만이면 frontendId — leetcode.ts에서 별도 해결)
 export interface ParsedInput {
   /** v1.0+ platform 분기 */
-  platform: 'LeetCode' | 'Programmers' | 'AtCoder';
+  platform: 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces';
   /** LeetCode: 정규화된 slug. 숫자 입력이면 빈 문자열 + isNumericId=true */
   titleSlug: string;
   /** LeetCode: 입력이 숫자만인 경우 (예: "1") — frontendId → slug 해결 */
@@ -106,12 +106,31 @@ export interface ParsedInput {
   contestId?: string;
   /** AtCoder: task ID (예: 'abc300_a') */
   taskId?: string;
+  /** Codeforces: index (예: 'A', 'B1') */
+  cfIndex?: string;
 }
 
 export function parseProblemInput(input: string): ParsedInput {
   const trimmed = input.trim();
 
-  // AtCoder URL — 다른 플랫폼보다 먼저 (atcoder.jp 고유)
+  // Codeforces URL — contest 또는 problemset 형식
+  // https://codeforces.com/contest/{contestId}/problem/{index}
+  // https://codeforces.com/problemset/problem/{contestId}/{index}
+  const cfContestMatch = trimmed.match(/codeforces\.com\/contest\/(\d+)\/problem\/([A-Z]\d*)/i);
+  const cfProblemsetMatch = trimmed.match(/codeforces\.com\/problemset\/problem\/(\d+)\/([A-Z]\d*)/i);
+  const cfMatch = cfContestMatch || cfProblemsetMatch;
+  if (cfMatch) {
+    return {
+      platform: 'Codeforces',
+      contestId: cfMatch[1],
+      cfIndex: cfMatch[2].toUpperCase(),
+      titleSlug: '',
+      isNumericId: false,
+      frontendId: null,
+    };
+  }
+
+  // AtCoder URL — atcoder.jp 고유
   // https://atcoder.jp/contests/{contestId}/tasks/{taskId}
   const acMatch = trimmed.match(/atcoder\.jp\/contests\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)/i);
   if (acMatch) {

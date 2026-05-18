@@ -296,6 +296,22 @@ html.theme-light .planet-pulse {
   transition: transform 0.12s ease;
 }
 
+/* 외부 사이트 바로가기 (프로그래머스 / AtCoder / Codeforces) — favicon 표시 */
+.icon-btn-site img {
+  width: 22px;
+  height: 22px;
+  display: block;
+  border-radius: 4px;
+  /* 일부 favicon은 흰 배경이라 dark UI에서 둥둥 떠 보임 — 살짝 opacity로 통일 */
+  opacity: 0.9;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.icon-btn-site:hover img {
+  transform: scale(1.05);
+  opacity: 1;
+}
+
 .status-block {
   display: flex;
   align-items: flex-start;

@@ -48,26 +48,42 @@ function titleSlug(title: string): string {
   );
 }
 
-// 제목 추출 — `<title>` 또는 task header
-// AtCoder 페이지의 <title>은 "A - Repititions" 형식, h2/span 안에도 같은 텍스트
+// 제목 추출 — AtCoder 페이지 구조:
+//   <span class="h2">A - N-Choice Question<a class="btn ...">Editorial</a></span>
+//   <title>A - N-Choice Question - AtCoder Beginner Contest 300 - AtCoder</title>
+// 둘 다 "{taskLetter} - {taskName}" 형식이라 task letter("A") 제거 필요.
+function stripTaskLetter(text: string): string {
+  // " - " 위치 — 처음 한 번만 split (task letter는 항상 첫 부분)
+  const idx = text.indexOf(' - ');
+  if (idx > 0 && idx < 5) {
+    // task letter는 보통 1~3자 (A, B1, EX 등) — 안전 가드
+    return text.slice(idx + 3).trim();
+  }
+  return text.trim();
+}
+
 function extractTitle($: cheerio.CheerioAPI): string {
-  // 가장 안정적: <title> 태그 — "Task Name - Contest Name" 형식
-  const fullTitle = $('title').first().text().trim();
-  if (fullTitle) {
-    // " - AtCoder ..." suffix 제거
-    const m = fullTitle.split(/\s+-\s+/);
-    if (m.length >= 1 && m[0]) return m[0].trim();
+  // h2/span 우선 — 페이지 내 직접 표시되는 타이틀, suffix 없어 깔끔
+  const h2Candidates = ['span.h2', 'h2.h2', '#main-container h2', '.h2'];
+  for (const sel of h2Candidates) {
+    const t = $(sel).first().clone().children().remove().end().text().trim();
+    if (t) {
+      const cleaned = stripTaskLetter(t);
+      // Editorial 같은 부산물 마지막 정리
+      if (cleaned && !/^\s*editorial\s*$/i.test(cleaned)) return cleaned;
+    }
   }
 
-  const candidates = [
-    'span.h2',
-    'h2.h2',
-    '#main-container h2',
-    '.h2',
-  ];
-  for (const sel of candidates) {
-    const t = $(sel).first().clone().children().remove().end().text().trim();
-    if (t) return t.replace(/^\s*Editorial\s*$/i, '').trim();
+  // fallback: <title> 태그 — "A - Task Name - Contest Name - AtCoder" 형식
+  const fullTitle = $('title').first().text().trim();
+  if (fullTitle) {
+    // 우선 task letter 제거 → 그 다음 contest name suffix 제거
+    const afterLetter = stripTaskLetter(fullTitle);
+    // afterLetter: "Task Name - Contest Name - AtCoder"
+    // 첫 " - " 앞이 task name (suffix 안전 제거)
+    const sepIdx = afterLetter.indexOf(' - ');
+    if (sepIdx > 0) return afterLetter.slice(0, sepIdx).trim();
+    return afterLetter;
   }
   return '';
 }

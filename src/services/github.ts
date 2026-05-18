@@ -2,7 +2,7 @@
 // Octokit git data API 사용 - createOrUpdateFileContents는 파일당 commit 1개라 비효율
 
 import { Octokit } from '@octokit/rest';
-import { LeetCodeProblem, ProgrammersProblem, AtCoderProblem, Problem, UploadResult, Platform } from '../types';
+import { LeetCodeProblem, ProgrammersProblem, AtCoderProblem, CodeforcesProblem, Problem, UploadResult, Platform } from '../types';
 import { langToExt, langToFolder } from '../util/language';
 
 // GitHub API 에러를 진단 가능한 한국어 메시지로 변환 (원본 status는 보존)
@@ -101,9 +101,12 @@ function entryFolder(e: IndexEntry): string {
     return `LeetCode/${num}-${e.slug}`;
   }
   if (e.platform === 'AtCoder') {
-    // AtCoder는 slug가 이미 `taskId-titleSlug` 형식 (taskId가 globally unique이라 단독 키로 충분)
-    // 중복 prefix 방지 — slug 그대로 사용
+    // slug가 이미 `taskId-titleSlug` 형식 (taskId globally unique → 단독 키 충분)
     return `AtCoder/${e.slug}`;
+  }
+  if (e.platform === 'Codeforces') {
+    // slug가 이미 `{contestId}-{index}-{titleSlug}` 형식
+    return `Codeforces/${e.slug}`;
   }
   // Programmers / 향후 플랫폼 — `${problemId}-${slug}` 패턴
   return `${e.platform}/${e.problemId}-${e.slug}`;
@@ -432,9 +435,14 @@ function solutionFolder(problem: Problem): string {
   }
   if (problem.platform === 'AtCoder') {
     // taskId가 이미 titleSlug에 포함됨 (예: 'abc300_a-n-repititions')
-    // 그래도 명확성 위해 ${platform}/${slug} 패턴 통일
+    // 중복 prefix 방지 — slug 그대로
     const ac = problem as AtCoderProblem;
     return `AtCoder/${ac.titleSlug}`;
+  }
+  if (problem.platform === 'Codeforces') {
+    // titleSlug에 이미 contestId-index 포함 (예: '1234-A-two-pointers')
+    const cf = problem as CodeforcesProblem;
+    return `Codeforces/${cf.titleSlug}`;
   }
   // LeetCode (platform 미지정 포함 — discriminator optional)
   const lp = problem as LeetCodeProblem;
@@ -446,6 +454,7 @@ function solutionFolder(problem: Problem): string {
 function problemPlatform(problem: Problem): Platform {
   if (problem.platform === 'Programmers') return 'Programmers';
   if (problem.platform === 'AtCoder') return 'AtCoder';
+  if (problem.platform === 'Codeforces') return 'Codeforces';
   return 'LeetCode';
 }
 
@@ -457,6 +466,10 @@ function problemIdOf(problem: Problem): string {
   if (problem.platform === 'AtCoder') {
     return (problem as AtCoderProblem).taskId;
   }
+  if (problem.platform === 'Codeforces') {
+    const cf = problem as CodeforcesProblem;
+    return `${cf.contestId}${cf.index}`;
+  }
   return (problem as LeetCodeProblem).questionFrontendId;
 }
 
@@ -464,6 +477,7 @@ function problemIdOf(problem: Problem): string {
 function platformPrefix(problem: Problem): string {
   if (problem.platform === 'Programmers') return '[프로그래머스] ';
   if (problem.platform === 'AtCoder') return '[AtCoder] ';
+  if (problem.platform === 'Codeforces') return '[Codeforces] ';
   return '';
 }
 
