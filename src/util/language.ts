@@ -93,7 +93,7 @@ export async function withRetry<T>(
 //   - 1, 2024                (숫자만이면 frontendId — leetcode.ts에서 별도 해결)
 export interface ParsedInput {
   /** v1.0+ platform 분기 */
-  platform: 'LeetCode' | 'Programmers';
+  platform: 'LeetCode' | 'Programmers' | 'AtCoder';
   /** LeetCode: 정규화된 slug. 숫자 입력이면 빈 문자열 + isNumericId=true */
   titleSlug: string;
   /** LeetCode: 입력이 숫자만인 경우 (예: "1") — frontendId → slug 해결 */
@@ -102,10 +102,28 @@ export interface ParsedInput {
   frontendId: string | null;
   /** Programmers: lesson ID (URL에서 추출) */
   lessonId?: string;
+  /** AtCoder: contest ID (예: 'abc300') */
+  contestId?: string;
+  /** AtCoder: task ID (예: 'abc300_a') */
+  taskId?: string;
 }
 
 export function parseProblemInput(input: string): ParsedInput {
   const trimmed = input.trim();
+
+  // AtCoder URL — 다른 플랫폼보다 먼저 (atcoder.jp 고유)
+  // https://atcoder.jp/contests/{contestId}/tasks/{taskId}
+  const acMatch = trimmed.match(/atcoder\.jp\/contests\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)/i);
+  if (acMatch) {
+    return {
+      platform: 'AtCoder',
+      contestId: acMatch[1].toLowerCase(),
+      taskId: acMatch[2].toLowerCase(),
+      titleSlug: '',
+      isNumericId: false,
+      frontendId: null,
+    };
+  }
 
   // Programmers URL — 가장 먼저 체크
   // https://school.programmers.co.kr/learn/courses/{courseId}/lessons/{lessonId}

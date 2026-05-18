@@ -2,6 +2,7 @@
 
 import { fetchProblem, resolveTitleSlugByFrontendId } from './leetcode';
 import { fetchProgrammersProblem } from './programmers';
+import { fetchAtcoderProblem } from './atcoder';
 import { translateProblem, StreamCallback } from './translator';
 import { annotateCode } from './annotator';
 import { uploadSolution, createRepoIfMissing } from './github';
@@ -18,6 +19,31 @@ export async function fetchAndTranslate(
   onStream?: StreamCallback
 ): Promise<FetchProblemResult> {
   const parsed = parseProblemInput(input);
+
+  // ─── AtCoder 분기 ────────────────────────────────
+  // taskId가 globally unique (contest prefix 포함) → cache key로 충분
+  if (parsed.platform === 'AtCoder') {
+    if (!parsed.contestId || !parsed.taskId) {
+      throw new Error('AtCoder URL이 올바르지 않아요 — atcoder.jp/contests/{콘테스트}/tasks/{태스크} 형식의 URL을 입력해주세요');
+    }
+
+    const cached = await readTranslationCache('AtCoder', parsed.taskId);
+    if (cached) {
+      onProgress?.('cached');
+      return cached;
+    }
+
+    onProgress?.('fetching');
+    const problem = await fetchAtcoderProblem({ contestId: parsed.contestId, taskId: parsed.taskId });
+
+    onProgress?.('translating');
+    const translation = await translateProblem(problem, onStream);
+    const translationHtml = await renderMarkdown(translation);
+
+    const result = { problem, translation, translationHtml };
+    await writeTranslationCache('AtCoder', parsed.taskId, result);
+    return result;
+  }
 
   // ─── Programmers 분기 ────────────────────────────────
   // lessonId 가 cache key — slug은 한글이라 파일명 안전성 위해 lessonId 사용

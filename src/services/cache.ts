@@ -12,16 +12,21 @@ function cacheDir(): string {
   return path.join(app.getPath('userData'), 'cache', 'translations');
 }
 
-// platform 별 cache key prefix — LeetCode와 Programmers 같은 slug라도 분리
-function cachePath(platform: 'LeetCode' | 'Programmers', key: string): string {
-  // key는 영숫자/dash만 (parseProblemInput 보장) 또는 숫자 (Programmers lessonId) — path traversal 안전
-  // LeetCode는 prefix 없이 (legacy 호환), Programmers는 'programmers-' prefix
-  const safeKey = platform === 'LeetCode' ? key : `programmers-${key}`;
+type CachePlatform = 'LeetCode' | 'Programmers' | 'AtCoder';
+
+// platform 별 cache key prefix — 같은 식별자라도 플랫폼 간 분리
+// LeetCode는 prefix 없이 (legacy 호환), 나머지는 platform 이름 lowercase prefix
+function cachePath(platform: CachePlatform, key: string): string {
+  // key는 영숫자/dash/underscore만 (parseProblemInput 보장) — path traversal 안전
+  const safeKey =
+    platform === 'LeetCode'
+      ? key
+      : `${platform.toLowerCase()}-${key}`;
   return path.join(cacheDir(), `${safeKey}.json`);
 }
 
 export async function readTranslationCache(
-  platform: 'LeetCode' | 'Programmers',
+  platform: CachePlatform,
   key: string
 ): Promise<FetchProblemResult | null> {
   try {
@@ -37,7 +42,7 @@ export async function readTranslationCache(
 }
 
 export async function writeTranslationCache(
-  platform: 'LeetCode' | 'Programmers',
+  platform: CachePlatform,
   key: string,
   result: FetchProblemResult
 ): Promise<void> {

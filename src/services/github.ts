@@ -2,7 +2,7 @@
 // Octokit git data API 사용 - createOrUpdateFileContents는 파일당 commit 1개라 비효율
 
 import { Octokit } from '@octokit/rest';
-import { LeetCodeProblem, ProgrammersProblem, Problem, UploadResult, Platform } from '../types';
+import { LeetCodeProblem, ProgrammersProblem, AtCoderProblem, Problem, UploadResult, Platform } from '../types';
 import { langToExt, langToFolder } from '../util/language';
 
 // GitHub API 에러를 진단 가능한 한국어 메시지로 변환 (원본 status는 보존)
@@ -94,12 +94,18 @@ interface IndexEntry {
 }
 
 // 풀이 폴더 경로 — 플랫폼별 prefix + 플랫폼별 폴더 명명 규칙
+// solutionFolder()와 동일 결과 산출해야 함 (인덱스 link 일치)
 function entryFolder(e: IndexEntry): string {
   if (e.platform === 'LeetCode') {
     const num = String(e.problemId).padStart(4, '0');
     return `LeetCode/${num}-${e.slug}`;
   }
-  // Phase 2+에서 추가될 플랫폼 — 일단 LeetCode 규칙으로 fallback
+  if (e.platform === 'AtCoder') {
+    // AtCoder는 slug가 이미 `taskId-titleSlug` 형식 (taskId가 globally unique이라 단독 키로 충분)
+    // 중복 prefix 방지 — slug 그대로 사용
+    return `AtCoder/${e.slug}`;
+  }
+  // Programmers / 향후 플랫폼 — `${problemId}-${slug}` 패턴
   return `${e.platform}/${e.problemId}-${e.slug}`;
 }
 
@@ -424,6 +430,12 @@ function solutionFolder(problem: Problem): string {
     const p = problem as ProgrammersProblem;
     return `Programmers/${p.lessonId}-${p.titleSlug}`;
   }
+  if (problem.platform === 'AtCoder') {
+    // taskId가 이미 titleSlug에 포함됨 (예: 'abc300_a-n-repititions')
+    // 그래도 명확성 위해 ${platform}/${slug} 패턴 통일
+    const ac = problem as AtCoderProblem;
+    return `AtCoder/${ac.titleSlug}`;
+  }
   // LeetCode (platform 미지정 포함 — discriminator optional)
   const lp = problem as LeetCodeProblem;
   const num = String(lp.questionFrontendId).padStart(4, '0');
@@ -432,7 +444,9 @@ function solutionFolder(problem: Problem): string {
 
 // 플랫폼별 어떤 platform 으로 인덱스에 기록할지
 function problemPlatform(problem: Problem): Platform {
-  return problem.platform === 'Programmers' ? 'Programmers' : 'LeetCode';
+  if (problem.platform === 'Programmers') return 'Programmers';
+  if (problem.platform === 'AtCoder') return 'AtCoder';
+  return 'LeetCode';
 }
 
 // 플랫폼별 problemId (root README 인덱스의 # column + sort key)
@@ -440,7 +454,17 @@ function problemIdOf(problem: Problem): string {
   if (problem.platform === 'Programmers') {
     return (problem as ProgrammersProblem).lessonId;
   }
+  if (problem.platform === 'AtCoder') {
+    return (problem as AtCoderProblem).taskId;
+  }
   return (problem as LeetCodeProblem).questionFrontendId;
+}
+
+// commit message 용 플랫폼 prefix
+function platformPrefix(problem: Problem): string {
+  if (problem.platform === 'Programmers') return '[프로그래머스] ';
+  if (problem.platform === 'AtCoder') return '[AtCoder] ';
+  return '';
 }
 
 export async function uploadSolution(args: {
@@ -527,9 +551,8 @@ export async function uploadSolution(args: {
 
   const langLabel = readmeChanged ? `(${langDir})` : `(${langDir}, README 변경 없음)`;
   const indexLabel = indexUpdated ? ' + 인덱스 갱신' : '';
-  const platformPrefix = args.problem.platform === 'Programmers' ? '[프로그래머스] ' : '';
   const idLabel = problemIdOf(args.problem);
-  const message = `feat: ${platformPrefix}${idLabel}. ${args.problem.title} ${langLabel} 풀이 추가${indexLabel}`;
+  const message = `feat: ${platformPrefix(args.problem)}${idLabel}. ${args.problem.title} ${langLabel} 풀이 추가${indexLabel}`;
 
   const result = await commitFiles(owner, repo, branch, files, message);
 
@@ -561,9 +584,8 @@ export async function updateRetrospective(args: {
   const retroPath = `${baseFolder}/${langDir}/RETROSPECTIVE.md`;
 
   const files: CommitFile[] = [{ path: retroPath, content: args.annotated }];
-  const platformPrefix = args.problem.platform === 'Programmers' ? '[프로그래머스] ' : '';
   const idLabel = problemIdOf(args.problem);
-  const message = `fix: ${platformPrefix}${idLabel}. ${args.problem.title} (${langDir}) 회고 수정`;
+  const message = `fix: ${platformPrefix(args.problem)}${idLabel}. ${args.problem.title} (${langDir}) 회고 수정`;
 
   const result = await commitFiles(owner, repo, branch, files, message);
 
