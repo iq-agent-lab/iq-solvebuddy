@@ -2,7 +2,7 @@
 // Octokit git data API 사용 - createOrUpdateFileContents는 파일당 commit 1개라 비효율
 
 import { Octokit } from '@octokit/rest';
-import { LeetCodeProblem, UploadResult } from '../types';
+import { LeetCodeProblem, UploadResult, Platform } from '../types';
 import { langToExt, langToFolder } from '../util/language';
 
 // GitHub API 에러를 진단 가능한 한국어 메시지로 변환 (원본 status는 보존)
@@ -60,62 +60,124 @@ interface CommitFile {
   content: string;
 }
 
-// ─── 풀이 레포 root README 자동 인덱스 ─────────────────────────────
+// ─── 풀이 레포 root README 자동 인덱스 (멀티 플랫폼) ─────────────────
 // uploadSolution이 매 풀이마다 root README.md의 marker 영역만 update.
 // 사용자가 README 위/아래에 자유 텍스트 추가 가능 (marker 밖 보존).
+//
+// v0.9 멀티 플랫폼: 각 플랫폼별 marker — `<!-- iq-leetbuddy:LeetCode:start -->` 등
+// 풀이 path: `LeetCode/NNNN-slug/` (이전엔 root 바로 아래)
+// legacy marker (`iq-leetbuddy:problems`)는 parseExistingIndex가 자동으로 LeetCode로 변환.
 
-const INDEX_MARKER_START = '<!-- iq-leetbuddy:problems:start -->';
-const INDEX_MARKER_END = '<!-- iq-leetbuddy:problems:end -->';
+const PLATFORMS_IN_ORDER: Platform[] = ['LeetCode', 'Programmers', 'AtCoder', 'Codeforces', 'BOJ'];
+const platformMarker = (p: Platform) => ({
+  start: `<!-- iq-leetbuddy:${p}:start -->`,
+  end: `<!-- iq-leetbuddy:${p}:end -->`,
+});
+
+const LEGACY_MARKER_START = '<!-- iq-leetbuddy:problems:start -->';
+const LEGACY_MARKER_END = '<!-- iq-leetbuddy:problems:end -->';
 
 interface IndexEntry {
-  frontendId: number;
+  platform: Platform;
+  /** 플랫폼별 식별자 — LeetCode: frontendId(string), Programmers: lessonId, etc. */
+  problemId: string;
   title: string;
-  titleSlug: string;
+  /** path-safe slug — LeetCode: titleSlug, etc. */
+  slug: string;
   difficulty: string;
   languages: string[];
   savedAt: string; // YYYY-MM-DD
 }
 
-// 기존 root README의 marker 영역 표를 parse
-function parseExistingIndex(content: string): IndexEntry[] {
-  const start = content.indexOf(INDEX_MARKER_START);
-  const end = content.indexOf(INDEX_MARKER_END);
+// 풀이 폴더 경로 — 플랫폼별 prefix + 플랫폼별 폴더 명명 규칙
+function entryFolder(e: IndexEntry): string {
+  if (e.platform === 'LeetCode') {
+    const num = String(e.problemId).padStart(4, '0');
+    return `LeetCode/${num}-${e.slug}`;
+  }
+  // Phase 2+에서 추가될 플랫폼 — 일단 LeetCode 규칙으로 fallback
+  return `${e.platform}/${e.problemId}-${e.slug}`;
+}
+
+// 한 플랫폼의 표 한 줄
+function entryRow(e: IndexEntry): string {
+  const langs = e.languages.join(', ');
+  const safeTitle = e.title.replace(/\|/g, '\\|');
+  return `| ${e.problemId} | [${safeTitle}](${entryFolder(e)}/) | ${e.difficulty} | ${langs} | ${e.savedAt} |`;
+}
+
+// 표 정렬 키 — 플랫폼별 다를 수 있지만 일단 problemId 숫자(있으면) → 문자열
+function sortEntries(entries: IndexEntry[]): IndexEntry[] {
+  return [...entries].sort((a, b) => {
+    const an = parseInt(a.problemId, 10);
+    const bn = parseInt(b.problemId, 10);
+    if (!isNaN(an) && !isNaN(bn)) return an - bn;
+    return a.problemId.localeCompare(b.problemId);
+  });
+}
+
+function renderPlatformTable(entries: IndexEntry[]): string {
+  if (entries.length === 0) {
+    return '_아직 풀이가 없습니다._';
+  }
+  const sorted = sortEntries(entries);
+  return [
+    '| # | 제목 | 난이도 | 언어 | 풀이 일자 |',
+    '|---|---|---|---|---|',
+    ...sorted.map(entryRow),
+  ].join('\n');
+}
+
+// 한 플랫폼 섹션 — `<details>` 접기 + count + 표
+function renderPlatformSection(platform: Platform, entries: IndexEntry[]): string {
+  const m = platformMarker(platform);
+  const count = entries.length;
+  // 첫 번째 (LeetCode)는 default open, 나머지는 접힘
+  const openAttr = platform === 'LeetCode' && count > 0 ? ' open' : '';
+  const tableMd = renderPlatformTable(entries);
+  return `${m.start}
+<details${openAttr}>
+<summary><b>${platform}</b> · ${count} 문제</summary>
+
+${tableMd}
+
+</details>
+${m.end}`;
+}
+
+// 한 플랫폼의 marker 영역 parse (새 또는 legacy)
+function parsePlatformBlock(content: string, startMarker: string, endMarker: string, platform: Platform): IndexEntry[] {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker);
   if (start < 0 || end < 0 || end < start) return [];
-
-  const table = content.slice(start + INDEX_MARKER_START.length, end).trim();
-  const lines = table.split('\n');
+  const block = content.slice(start + startMarker.length, end);
+  const lines = block.split('\n');
   const entries: IndexEntry[] = [];
-
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed.startsWith('|')) continue;
-    if (/^\|\s*-+/.test(trimmed)) continue; // separator row
-    if (/^\|\s*#\s*\|/i.test(trimmed)) continue; // header row
-
+    if (/^\|\s*-+/.test(trimmed)) continue;
+    if (/^\|\s*#\s*\|/i.test(trimmed)) continue;
     const cells = trimmed.split('|').map((s) => s.trim()).filter((s, i, a) => {
-      // 첫/마지막 빈 cell만 제거 (앞뒤 |로 인한)
       return !(i === 0 && s === '') && !(i === a.length - 1 && s === '');
     });
     if (cells.length < 5) continue;
-
     const [idCell, titleCell, diffCell, langCell, dateCell] = cells;
-    const id = parseInt(idCell, 10);
-    if (isNaN(id)) continue;
-
-    // titleCell 형식: [Title](NNNN-slug/)
     const titleMatch = titleCell.match(/^\[(.+?)\]\((.+?)\/?\)\s*$/);
     if (!titleMatch) continue;
     const title = titleMatch[1];
     const folder = titleMatch[2].replace(/\/$/, '');
-    const slugMatch = folder.match(/^\d+-(.+)$/);
-    const titleSlug = slugMatch ? slugMatch[1] : folder;
-
+    // path: 새 format은 `LeetCode/NNNN-slug`, legacy는 `NNNN-slug`
+    const platformStripped = folder.replace(new RegExp(`^${platform}/`), '');
+    const slugMatch = platformStripped.match(/^(\d+)-(.+)$/);
+    const problemId = slugMatch ? slugMatch[1] : idCell;
+    const slug = slugMatch ? slugMatch[2] : platformStripped;
     const languages = langCell.split(',').map((s) => s.trim()).filter(Boolean);
-
     entries.push({
-      frontendId: id,
+      platform,
+      problemId,
       title,
-      titleSlug,
+      slug,
       difficulty: diffCell,
       languages,
       savedAt: dateCell,
@@ -124,53 +186,85 @@ function parseExistingIndex(content: string): IndexEntry[] {
   return entries;
 }
 
-function renderIndexTable(entries: IndexEntry[]): string {
-  if (entries.length === 0) {
-    return '_아직 풀이가 없습니다._';
+// 기존 root README의 marker 영역(들) parse — 모든 플랫폼 + legacy
+function parseExistingIndex(content: string): IndexEntry[] {
+  const all: IndexEntry[] = [];
+
+  // legacy marker (v0.8 이하) — 'LeetCode'로 변환
+  if (content.includes(LEGACY_MARKER_START)) {
+    all.push(...parsePlatformBlock(content, LEGACY_MARKER_START, LEGACY_MARKER_END, 'LeetCode'));
   }
-  const sorted = [...entries].sort((a, b) => a.frontendId - b.frontendId);
-  const rows = sorted.map((e) => {
-    const folder = `${String(e.frontendId).padStart(4, '0')}-${e.titleSlug}`;
-    const langs = e.languages.join(', ');
-    // 제목에 `|` 같은 문자 있으면 escape
-    const safeTitle = e.title.replace(/\|/g, '\\|');
-    return `| ${e.frontendId} | [${safeTitle}](${folder}/) | ${e.difficulty} | ${langs} | ${e.savedAt} |`;
-  });
-  return [
-    '| # | 제목 | 난이도 | 언어 | 풀이 일자 |',
-    '|---|---|---|---|---|',
-    ...rows,
-  ].join('\n');
+
+  // 새 multi-platform markers
+  for (const p of PLATFORMS_IN_ORDER) {
+    const m = platformMarker(p);
+    if (content.includes(m.start)) {
+      all.push(...parsePlatformBlock(content, m.start, m.end, p));
+    }
+  }
+
+  // dedup: 같은 platform + folder는 한 번만 (legacy + new 둘 다 매칭될 수 있어)
+  const seen = new Set<string>();
+  const unique: IndexEntry[] = [];
+  for (const e of all) {
+    const key = `${e.platform}:${entryFolder(e)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(e);
+  }
+  return unique;
 }
 
 function buildRootReadme(existingContent: string | null, entries: IndexEntry[]): string {
-  const indexBlock = `${INDEX_MARKER_START}\n${renderIndexTable(entries)}\n${INDEX_MARKER_END}`;
-
-  if (existingContent && existingContent.includes(INDEX_MARKER_START)) {
-    // marker 영역만 교체 (사용자가 추가한 위/아래 텍스트 보존)
-    const before = existingContent.slice(0, existingContent.indexOf(INDEX_MARKER_START));
-    const afterIdx = existingContent.indexOf(INDEX_MARKER_END) + INDEX_MARKER_END.length;
-    const after = existingContent.slice(afterIdx);
-    return `${before}${indexBlock}${after}`;
+  // 플랫폼별로 entries 분리
+  const byPlatform: Record<Platform, IndexEntry[]> = {
+    LeetCode: [], Programmers: [], AtCoder: [], Codeforces: [], BOJ: [],
+  };
+  for (const e of entries) {
+    byPlatform[e.platform].push(e);
   }
 
-  if (existingContent && existingContent.trim()) {
-    // marker가 없는 기존 README가 있으면 끝에 append
-    return `${existingContent.trimEnd()}\n\n## 풀이 목록 (${entries.length}문제)\n\n${indexBlock}\n`;
-  }
+  // 모든 플랫폼 섹션 (count 0이어도 표시 — 풀이 추가 시 어떤 플랫폼 있는지 보임)
+  const sections = PLATFORMS_IN_ORDER.map((p) => renderPlatformSection(p, byPlatform[p])).join('\n\n');
 
-  // 처음 만드는 README (레포 자동 생성 직후엔 GitHub auto_init README가 있을 수도)
-  return `# LeetCode 풀이 노트
+  const totalCount = entries.length;
+  const header = `# 풀이 노트
 
-> [iq-leetbuddy](https://github.com/iq-agent-lab/iq-leetbuddy)로 자동 정리되는 LeetCode 풀이 모음. 매 풀이마다 한국어 번역 + AI 회고 + 통과 코드가 단일 commit으로 올라옴.
+> [iq-leetbuddy](https://github.com/iq-agent-lab/iq-leetbuddy)로 자동 정리되는 알고리즘 풀이 모음. 매 풀이마다 한국어 번역 + AI 회고 + 통과 코드가 단일 commit으로 올라옴.
 
-## 풀이 목록 (${entries.length}문제)
-
-${indexBlock}
-
----
-*Generated by [iq-leetbuddy](https://github.com/iq-agent-lab/iq-leetbuddy)*
+## 풀이 목록 (총 ${totalCount}문제)
 `;
+  const footer = `\n---\n*Generated by [iq-leetbuddy](https://github.com/iq-agent-lab/iq-leetbuddy)*\n`;
+
+  // 기존 README가 있고 marker 영역(legacy 또는 new) 존재하면 사용자 자유 텍스트(위/아래) 보존
+  if (existingContent) {
+    // legacy marker 영역 전체 (legacy block만 교체 — 다른 새 marker 영역은 별도 처리)
+    let result = existingContent;
+
+    // legacy block 제거 (있으면)
+    if (result.includes(LEGACY_MARKER_START)) {
+      const lStart = result.indexOf(LEGACY_MARKER_START);
+      const lEnd = result.indexOf(LEGACY_MARKER_END) + LEGACY_MARKER_END.length;
+      result = result.slice(0, lStart) + result.slice(lEnd);
+    }
+
+    // 각 새 platform block 제거
+    for (const p of PLATFORMS_IN_ORDER) {
+      const m = platformMarker(p);
+      if (result.includes(m.start)) {
+        const s = result.indexOf(m.start);
+        const e = result.indexOf(m.end) + m.end.length;
+        result = result.slice(0, s) + result.slice(e);
+      }
+    }
+
+    // marker 영역들 모두 제거된 result에 새 sections를 어디 넣을지:
+    // 기존 marker 위치 비슷한 자리에 — 가장 단순한 건 끝에 append
+    return `${result.trimEnd()}\n\n${sections}\n`;
+  }
+
+  // 처음 만드는 README
+  return `${header}\n${sections}\n${footer}`;
 }
 
 // 파일 raw content fetch — getContent의 base64 decode
@@ -335,7 +429,8 @@ export async function uploadSolution(args: {
   }
 
   const num = String(args.problem.questionFrontendId).padStart(4, '0');
-  const baseFolder = `${num}-${args.problem.titleSlug}`;
+  // v0.9: 풀이 path를 LeetCode/ 폴더 안으로 (멀티 플랫폼 기반)
+  const baseFolder = `LeetCode/${num}-${args.problem.titleSlug}`;
   const ext = langToExt(args.language);
   const langDir = langToFolder(args.language);
 
@@ -372,16 +467,19 @@ export async function uploadSolution(args: {
     const existingRootReadme = await fetchFileContent(owner, repo, 'README.md', branch);
     const entries = parseExistingIndex(existingRootReadme || '');
     const newEntry: IndexEntry = {
-      frontendId: parseInt(args.problem.questionFrontendId, 10),
+      platform: 'LeetCode',
+      problemId: args.problem.questionFrontendId,
       title: args.problem.title,
-      titleSlug: args.problem.titleSlug,
+      slug: args.problem.titleSlug,
       difficulty: args.problem.difficulty,
       languages: [langDir],
       savedAt: new Date().toISOString().slice(0, 10),
     };
 
-    // dedup: 같은 slug 있으면 languages 합치고 entry 교체 (savedAt 갱신)
-    const existingIdx = entries.findIndex((e) => e.titleSlug === newEntry.titleSlug);
+    // dedup: 같은 platform + slug 있으면 languages 합치고 entry 교체 (savedAt 갱신)
+    const existingIdx = entries.findIndex(
+      (e) => e.platform === newEntry.platform && e.slug === newEntry.slug
+    );
     if (existingIdx >= 0) {
       const prev = entries[existingIdx];
       const langs = Array.from(new Set([...prev.languages, langDir])).sort();
@@ -429,7 +527,8 @@ export async function updateRetrospective(args: {
   }
 
   const num = String(args.problem.questionFrontendId).padStart(4, '0');
-  const baseFolder = `${num}-${args.problem.titleSlug}`;
+  // v0.9: LeetCode/ prefix
+  const baseFolder = `LeetCode/${num}-${args.problem.titleSlug}`;
   const langDir = langToFolder(args.language);
   const retroPath = `${baseFolder}/${langDir}/RETROSPECTIVE.md`;
 
@@ -506,9 +605,10 @@ export async function createRepoIfMissing(): Promise<{
 // 버튼 → 이 함수 호출 → 결과를 localStorage solutions에 merge.
 export async function fetchIndexFromGithub(): Promise<{
   entries: Array<{
-    frontendId: number;
+    platform: Platform;
+    problemId: string;
     title: string;
-    titleSlug: string;
+    slug: string;
     difficulty: string;
     languages: string[];
     savedAt: string;
@@ -524,9 +624,145 @@ export async function fetchIndexFromGithub(): Promise<{
   const readme = await fetchFileContent(owner, repo, 'README.md', branch);
   if (!readme) return { entries: [] };
 
-  // parseExistingIndex는 이미 있음 (v0.5 root README 인덱스 update용)
   const entries = parseExistingIndex(readme);
   return { entries };
+}
+
+// ─── v0.9 legacy 풀이 자동 마이그레이션 ──────────────────────────────
+// v0.8 이하 사용자는 풀이 path가 root 바로 아래 (`NNNN-slug/...`). v0.9부턴 `LeetCode/NNNN-slug/...`
+// 한 commit으로 모든 legacy path → LeetCode/ 아래로 mv + root README 인덱스도 새 형식으로 갱신.
+//
+// 동작:
+//   1) root tree recursive 가져옴
+//   2) legacy 패턴(`^\d+-[a-z0-9-]+/`) 매칭하는 모든 blob 찾기
+//   3) 새 tree: 기존 path 삭제(sha:null) + LeetCode/{path}에 새 entry
+//   4) root README도 새 멀티 플랫폼 형식으로
+//   5) 단일 commit으로 push
+//
+// 이미 LeetCode/ 폴더 있으면 noop. 사용자가 stats 모달의 "기존 풀이 LeetCode/ 로 정리" 명시 클릭 후만 실행.
+export async function migrateLegacyLeetCodeFolders(): Promise<{
+  migrated: number;
+  alreadyMigrated: boolean;
+  commitSha?: string;
+  commitUrl?: string;
+}> {
+  const owner = process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_REPO;
+  const branch = process.env.GITHUB_BRANCH || 'main';
+  if (!owner || !repo) {
+    throw new Error('GITHUB_OWNER 또는 GITHUB_REPO가 설정되지 않았습니다 — ⚙️ 설정에서 입력해주세요');
+  }
+
+  const o = octokit();
+  const ctx = { owner, repo, branch };
+
+  // 1) 현재 ref + commit + tree sha
+  let latestCommitSha: string;
+  let baseTreeSha: string;
+  try {
+    const { data: refData } = await o.git.getRef({ owner, repo, ref: `heads/${branch}` });
+    latestCommitSha = refData.object.sha;
+    const { data: commitData } = await o.git.getCommit({ owner, repo, commit_sha: latestCommitSha });
+    baseTreeSha = commitData.tree.sha;
+  } catch (err) {
+    throw toGitHubError(err, { ...ctx, stage: 'migrate/getRef' });
+  }
+
+  // 2) recursive tree get
+  let tree: Array<{ path?: string; mode?: string; type?: string; sha?: string }>;
+  try {
+    const { data } = await o.git.getTree({
+      owner,
+      repo,
+      tree_sha: baseTreeSha,
+      recursive: 'true',
+    });
+    tree = data.tree;
+  } catch (err) {
+    throw toGitHubError(err, { ...ctx, stage: 'migrate/getTree' });
+  }
+
+  // 3) legacy 패턴 매칭 — root 바로 아래 NNNN-slug/...
+  // (LeetCode/ 안은 이미 새 형식이라 제외)
+  const LEGACY_PATTERN = /^(\d+-[a-z0-9-]+)\/(.+)$/;
+  const legacyBlobs: Array<{ oldPath: string; newPath: string; sha: string; mode: string }> = [];
+  for (const entry of tree) {
+    if (!entry.path || !entry.sha || entry.type !== 'blob') continue;
+    const m = entry.path.match(LEGACY_PATTERN);
+    if (!m) continue;
+    legacyBlobs.push({
+      oldPath: entry.path,
+      newPath: `LeetCode/${entry.path}`,
+      sha: entry.sha,
+      mode: entry.mode || '100644',
+    });
+  }
+
+  if (legacyBlobs.length === 0) {
+    return { migrated: 0, alreadyMigrated: true };
+  }
+
+  // 4) 새 root README 생성 — legacy + 기존 새 marker entries 합쳐서
+  const existingReadme = await fetchFileContent(owner, repo, 'README.md', branch);
+  const parsed = parseExistingIndex(existingReadme || '');
+  // parsed에는 legacy block의 entry (root path)도 있음 — 이미 LeetCode platform 으로 변환됨
+  // 새 buildRootReadme가 LeetCode/ prefix path로 표시
+  const newReadme = buildRootReadme(existingReadme, parsed);
+
+  // 5) tree entries: 삭제(legacy path) + 추가(LeetCode/{path}) + README update
+  const treeEntries: Array<{ path: string; mode: '100644' | '100755' | '040000' | '160000' | '120000'; type: 'blob' | 'tree' | 'commit'; sha: string | null; content?: string }> = [];
+  for (const b of legacyBlobs) {
+    treeEntries.push({ path: b.oldPath, mode: '100644', type: 'blob', sha: null });
+    treeEntries.push({ path: b.newPath, mode: '100644', type: 'blob', sha: b.sha });
+  }
+  // README 새 content
+  treeEntries.push({ path: 'README.md', mode: '100644', type: 'blob', content: newReadme, sha: null });
+
+  let newTreeSha: string;
+  try {
+    // content가 있는 entry는 sha 대신 content 사용 — octokit type이 sha를 string으로 강제하므로 separate
+    const treeForApi = treeEntries.map((t) => {
+      if (t.content !== undefined) {
+        return { path: t.path, mode: t.mode, type: t.type, content: t.content };
+      }
+      return { path: t.path, mode: t.mode, type: t.type, sha: t.sha };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await o.git.createTree({ owner, repo, base_tree: baseTreeSha, tree: treeForApi as any });
+    newTreeSha = data.sha;
+  } catch (err) {
+    throw toGitHubError(err, { ...ctx, stage: 'migrate/createTree' });
+  }
+
+  let newCommit;
+  try {
+    const { data } = await o.git.createCommit({
+      owner,
+      repo,
+      message: `chore: 기존 LeetCode 풀이 ${legacyBlobs.length}개 파일을 LeetCode/ 폴더로 정리 (v0.9 멀티 플랫폼 기반)`,
+      tree: newTreeSha,
+      parents: [latestCommitSha],
+    });
+    newCommit = data;
+  } catch (err) {
+    throw toGitHubError(err, { ...ctx, stage: 'migrate/createCommit' });
+  }
+
+  try {
+    await o.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha });
+  } catch (err) {
+    throw toGitHubError(err, { ...ctx, stage: 'migrate/updateRef' });
+  }
+
+  // 파일 수 → 풀이 수 (대략 한 풀이당 3 파일: README/solution/RETROSPECTIVE)
+  const approxProblemCount = Math.ceil(legacyBlobs.length / 3);
+
+  return {
+    migrated: approxProblemCount,
+    alreadyMigrated: false,
+    commitSha: newCommit.sha,
+    commitUrl: `https://github.com/${owner}/${repo}/commit/${newCommit.sha}`,
+  };
 }
 
 // 연결 진단: 토큰 유효성 + 레포 존재 확인 + 브랜치 일치 여부
