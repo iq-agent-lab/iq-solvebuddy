@@ -192,6 +192,13 @@ Output: ...
 // Codeforces — 영어 원문 → 한국어 번역. statement HTML이 .problem-statement 전체로
 // 헤더(time/memory limit) + body + .sample-tests + .note 다 포함.
 function buildCodeforcesPrompt(problem: CodeforcesProblem): string {
+  const tagLine = problem.topicTags.length > 0
+    ? problem.topicTags.map((t) => t.name).join(', ')
+    : '(태그 없음)';
+  const tagInHeader = problem.topicTags.length > 0
+    ? ` · ${problem.topicTags.map((t) => t.name).join(', ')}`
+    : '';
+
   return `너는 Codeforces 문제를 한국어로 옮기는 번역가야. 다음 영어 원문을 자연스러운 한국어 마크다운으로 변환해줘.
 
 [메타]
@@ -199,6 +206,7 @@ function buildCodeforcesPrompt(problem: CodeforcesProblem): string {
 - Problem index: ${problem.index}
 - 제목: ${problem.title}
 - 난이도(rating): ${problem.difficulty}
+- 알고리즘 태그: ${tagLine}
 
 [원문 HTML — .problem-statement 전체]
 ${problem.content}
@@ -207,7 +215,7 @@ ${problem.content}
 
 # ${problem.contestId}${problem.index}. ${problem.title}
 
-> **${problem.difficulty}** · CF ${problem.contestId} · [원문](${problem.url})
+> **${problem.difficulty}** · CF ${problem.contestId}${tagInHeader} · [원문](${problem.url})
 
 ## 문제
 
