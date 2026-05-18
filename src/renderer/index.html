@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; script-src 'self'">
   <title>iq-solvebuddy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="../vendor/codemirror/codemirror.css">
   <link rel="stylesheet" href="../vendor/codemirror/theme/material-darker.css">
   <link rel="stylesheet" href="../vendor/codemirror/theme/material.css">
+  <link rel="stylesheet" href="../vendor/katex/katex.min.css">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -30,13 +31,13 @@
         <img src="https://leetcode.com/favicon.ico" alt="LeetCode" width="22" height="22">
       </button>
       <button class="icon-btn icon-btn-site" id="open-programmers-btn" title="프로그래머스 열기 (기본 브라우저)">
-        <img src="https://school.programmers.co.kr/favicon.ico" alt="Programmers" width="22" height="22">
+        <img src="https://www.google.com/s2/favicons?domain=programmers.co.kr&sz=64" alt="Programmers" width="22" height="22">
       </button>
       <button class="icon-btn icon-btn-site" id="open-atcoder-btn" title="AtCoder 열기 (기본 브라우저)">
-        <img src="https://atcoder.jp/favicon.ico" alt="AtCoder" width="22" height="22">
+        <img src="https://www.google.com/s2/favicons?domain=atcoder.jp&sz=64" alt="AtCoder" width="22" height="22">
       </button>
       <button class="icon-btn icon-btn-site" id="open-codeforces-btn" title="Codeforces 열기 (기본 브라우저)">
-        <img src="https://codeforces.org/s/0/favicon-32x32.png" alt="Codeforces" width="22" height="22">
+        <img src="https://www.google.com/s2/favicons?domain=codeforces.com&sz=64" alt="Codeforces" width="22" height="22">
       </button>
       <button class="icon-btn" id="open-stats-btn" title="풀이 통계">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -195,7 +196,7 @@
   </main>
 
   <footer class="app-footer">
-    <span>iq-agent-lab · v1.3.0</span>
+    <span>iq-agent-lab · v1.3.1</span>
     <span class="footer-divider">·</span>
     <span id="config-status">설정 확인 중...</span>
     <span class="footer-divider">·</span>

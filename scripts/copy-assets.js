@@ -96,4 +96,11 @@ copyFile(`${cmRoot}/addon/edit/closebrackets.js`, 'dist/vendor/codemirror/addon/
 copyFile(`${cmRoot}/addon/display/placeholder.js`, 'dist/vendor/codemirror/addon/placeholder.js');
 copyFile(`${cmRoot}/addon/selection/active-line.js`, 'dist/vendor/codemirror/addon/active-line.js');
 
+// ─── KaTeX (수식 렌더링) ──────────────────────────────────────────
+// marked-katex-extension가 main 프로세스에서 HTML로 변환 (KaTeX HTML+CSS span 구조).
+// renderer는 katex.min.css와 폰트(woff2)만 있으면 즉시 렌더링.
+// 폰트는 url(fonts/...) 상대 경로라 dist/vendor/katex/fonts/ 구조 보존 필요.
+copyFile('node_modules/katex/dist/katex.min.css', 'dist/vendor/katex/katex.min.css');
+copyDir('node_modules/katex/dist/fonts', 'dist/vendor/katex/fonts');
+
 console.log('Done.');

@@ -1,6 +1,6 @@
 {
   "name": "iq-leetbuddy",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "LeetCode/프로그래머스/AtCoder/Codeforces 풀이를 한국어로 정리하고 AI 회고를 생성해 GitHub에 자동 업로드하는 데스크톱 에이전트",
   "main": "dist/main/index.js",
   "scripts": {
@@ -33,7 +33,9 @@
     "cheerio": "^1.2.0",
     "codemirror": "^5.65.21",
     "dotenv": "^16.4.5",
-    "marked": "^12.0.0"
+    "katex": "^0.16.47",
+    "marked": "^12.0.0",
+    "marked-katex-extension": "^5.1.8"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -24,6 +24,7 @@ import {
 import { decryptProcessEnvSecrets, migrateSecretsIfNeeded } from './settings';
 import { checkForUpdates } from './update';
 import { prewarmAtcoderModels } from '../services/atcoderModels';
+import { closeAllBrowserFetchWindows } from '../services/browserFetch';
 
 // ─── userData 경로 호환성 ─────────────────────────────────────
 // v1.0+ 도구 이름이 iq-solvebuddy로 바뀌었지만, Electron의 userData 경로는
@@ -607,4 +608,6 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  // hidden BrowserWindow pool 정리 (메모리 누수 방지)
+  closeAllBrowserFetchWindows();
 });
