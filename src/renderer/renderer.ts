@@ -340,6 +340,8 @@ function renderRecent(): void {
 const SOLUTIONS_KEY = 'iq-leetbuddy:solutions';
 
 interface SolutionRecord {
+  /** Phase 1: 'LeetCode'만. Phase 2부터 다른 플랫폼 추가 */
+  platform?: 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces' | 'BOJ';
   frontendId: number;
   title: string;
   titleSlug: string;
@@ -531,6 +533,33 @@ function closeStats(): void {
 // ─── GitHub backfill — 풀이 레포 root README 인덱스 → localStorage ──
 // 다른 디바이스 / v0.5 이전 풀이까지 통계에 포함되도록.
 // 기존 localStorage entry는 우선 (최신 savedAt 보존). backfill은 빈 자리만 채움.
+// v0.9 멀티 플랫폼 마이그레이션 — 기존 root path 풀이(NNNN-slug/)를 LeetCode/ 폴더로
+async function handleMigrate(): Promise<void> {
+  const btn = $btn('migrate-btn');
+  btn.disabled = true;
+  const originalText = btn.textContent || '🗂 기존 풀이 정리';
+  btn.textContent = '정리 중...';
+
+  try {
+    const r = await window.api.migrateLegacyFolders();
+    if (!r.ok) throw new Error(r.error);
+
+    if (r.alreadyMigrated) {
+      setStatus('이미 정리되어 있어요 — 모든 LeetCode 풀이가 LeetCode/ 폴더에 있음', 'ok');
+    } else {
+      setStatus(
+        `✓ ${r.migrated || 0}개 풀이를 LeetCode/ 폴더로 정리 완료 — commit ${(r.commitSha || '').slice(0, 7)}`,
+        'ok'
+      );
+    }
+  } catch (e: any) {
+    setStatus(`정리 실패: ${e?.message || String(e)}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
 async function handleBackfill(): Promise<void> {
   const btn = $btn('backfill-btn');
   btn.disabled = true;
@@ -548,15 +577,20 @@ async function handleBackfill(): Promise<void> {
     }
 
     // IndexEntry → SolutionRecord (languages 배열 → 각 lang별 record로 펼침)
+    // Phase 1: LeetCode 풀이만 처리 (다른 플랫폼은 v1.0+에서)
     const backfilled: SolutionRecord[] = [];
     for (const e of indexEntries) {
+      if (e.platform !== 'LeetCode') continue;
       const ts = new Date(e.savedAt).getTime();
       const savedAt = isNaN(ts) ? Date.now() : ts;
+      const frontendId = parseInt(e.problemId, 10);
+      if (isNaN(frontendId)) continue;
       for (const lang of e.languages) {
         backfilled.push({
-          frontendId: e.frontendId,
+          platform: 'LeetCode',
+          frontendId,
           title: e.title,
-          titleSlug: e.titleSlug,
+          titleSlug: e.slug,
           language: lang,
           difficulty: e.difficulty,
           savedAt,
@@ -985,6 +1019,7 @@ function showUploadSuccess(result: UploadResultShape): void {
   // 풀이 통계에 기록 — state에 problem/language 보존되어 있음
   if (state.problem && state.selectedLang) {
     recordSolution({
+      platform: 'LeetCode',
       frontendId: parseInt(state.problem.questionFrontendId, 10),
       title: state.problem.title,
       titleSlug: state.problem.titleSlug,
@@ -1672,6 +1707,10 @@ $btn('close-stats').addEventListener('click', (e: Event) => {
 $btn('backfill-btn').addEventListener('click', (e: Event) => {
   e.stopPropagation();
   handleBackfill();
+});
+$btn('migrate-btn').addEventListener('click', (e: Event) => {
+  e.stopPropagation();
+  handleMigrate();
 });
 $('stats-modal').addEventListener('click', (e: Event) => {
   const target = e.target as HTMLElement | null;

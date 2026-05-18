@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('api', {
     annotated: string;
   }) => ipcRenderer.invoke('update-retrospective', payload),
   backfillFromGithub: () => ipcRenderer.invoke('backfill-from-github'),
+  migrateLegacyFolders: () => ipcRenderer.invoke('migrate-legacy-folders'),
   createRepo: () => ipcRenderer.invoke('create-repo'),
   verifyGithub: () => ipcRenderer.invoke('verify-github'),
 

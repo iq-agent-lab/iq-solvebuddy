@@ -4,7 +4,7 @@ import { ipcMain, WebContents, dialog, BrowserWindow } from 'electron';
 import { fetchAndTranslate, annotateAndUpload } from '../services/pipeline';
 import { resetTranslatorClient } from '../services/translator';
 import { resetAnnotatorClient } from '../services/annotator';
-import { resetGithubClient, createRepoIfMissing, verifyConnection, fetchIndexFromGithub, updateRetrospective } from '../services/github';
+import { resetGithubClient, createRepoIfMissing, verifyConnection, fetchIndexFromGithub, updateRetrospective, migrateLegacyLeetCodeFolders } from '../services/github';
 import { fetchRecentAcceptedSubmission, hasAcceptedSubmission } from '../services/leetcode';
 import { LeetCodeProblem } from '../types';
 import { renderMarkdown } from '../services/markdown';
@@ -233,6 +233,16 @@ export function registerIpcHandlers() {
       proceed: result.response === 1, // 1 = "그래도 업로드"
       dontAskAgain: !!result.checkboxChecked,
     };
+  });
+
+  // ── v0.9 legacy 풀이 자동 마이그레이션 (root NNNN-slug → LeetCode/NNNN-slug) ──
+  ipcMain.handle('migrate-legacy-folders', async () => {
+    try {
+      const result = await migrateLegacyLeetCodeFolders();
+      return { ok: true, ...result };
+    } catch (err) {
+      return { ok: false, error: toErrorMessage(err), status: getStatus(err) };
+    }
   });
 
   // ── 회고 사후 편집 — RETROSPECTIVE.md만 새 commit ──

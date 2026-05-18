@@ -1,5 +1,14 @@
 // LeetCode GraphQL 응답 + 내부 도메인 타입 + IPC API 계약
 
+/**
+ * 지원 플랫폼 — Phase 1은 LeetCode만 실제 동작, 나머지는 enum/marker 예약.
+ * Phase 2: Programmers (한국어), Phase 3: AtCoder, Phase 4: Codeforces, Phase 5: BOJ
+ */
+export type Platform = 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces' | 'BOJ';
+
+export const ALL_PLATFORMS: Platform[] = ['LeetCode', 'Programmers', 'AtCoder', 'Codeforces', 'BOJ'];
+
+
 export interface LeetCodeTag {
   name: string;
   slug: string;
@@ -130,13 +139,22 @@ export interface IqApi {
   backfillFromGithub: () => Promise<
     IpcResult<{
       entries: Array<{
-        frontendId: number;
+        platform: Platform;
+        problemId: string;
         title: string;
-        titleSlug: string;
+        slug: string;
         difficulty: string;
         languages: string[];
         savedAt: string;
       }>;
+    }>
+  >;
+  migrateLegacyFolders: () => Promise<
+    IpcResult<{
+      migrated: number;
+      alreadyMigrated: boolean;
+      commitSha?: string;
+      commitUrl?: string;
     }>
   >;
   createRepo: () => Promise<IpcResult<CreateRepoResult>>;
