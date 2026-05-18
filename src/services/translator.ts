@@ -3,7 +3,7 @@
 // Programmers (한국어 원문): 정리만 (번역 X, 마크다운 형식 정돈)
 
 import Anthropic from '@anthropic-ai/sdk';
-import { LeetCodeProblem, ProgrammersProblem, Problem } from '../types';
+import { LeetCodeProblem, ProgrammersProblem, AtCoderProblem, Problem } from '../types';
 import { withRetry } from '../util/language';
 
 let _client: Anthropic | null = null;
@@ -129,15 +129,79 @@ ${problem.content}
 7. 마크다운 외 다른 설명/주석 추가 금지`;
 }
 
+// AtCoder — 영어(또는 일본어) 원문 → 한국어 번역. LeetCode prompt와 유사하지만
+// statement에 score / time limit 등이 statement 안에 포함되어 있어 그대로 살림.
+function buildAtcoderPrompt(problem: AtCoderProblem): string {
+  const langLabel = problem.statementLang === 'ja' ? '일본어' : problem.statementLang === 'en' ? '영어' : '영어/일본어';
+  const sourceLangRule =
+    problem.statementLang === 'ja'
+      ? '원문이 일본어 — 자연스러운 한국어로 번역. 알고리즘 용어는 영어 병기 가능 (예: "동적 계획법(DP)").'
+      : '원문이 영어 — 자연스러운 한국어로 번역. 알고리즘 용어는 영어 그대로 또는 한국어 병기.';
+
+  return `너는 AtCoder 문제를 한국어로 옮기는 번역가야. 다음 문제(${langLabel} 원문)를 자연스러운 한국어 마크다운으로 변환해줘.
+
+[메타]
+- 콘테스트: ${problem.contestId}
+- Task ID: ${problem.taskId}
+- 제목: ${problem.title}
+- 점수: ${problem.difficulty}
+
+[원문 HTML]
+${problem.content}
+
+다음 형식으로만 출력해줘 (코드 블록이나 추가 설명 없이 바로 마크다운 본문):
+
+# ${problem.taskId}. ${problem.title}
+
+> **${problem.difficulty}** · ${problem.contestId} · [원문](${problem.url})
+
+## 문제
+
+(원문을 매끄러운 한국어로 옮긴 본문. HTML 태그는 마크다운으로 변환)
+
+## 제약 조건
+
+(Constraints / 制約 섹션을 불릿으로)
+
+## 입출력
+
+(Input / 入力 형식 설명 + Output / 出力 형식 설명)
+
+## 입출력 예시
+
+### Example 1
+\`\`\`
+Input: ...
+Output: ...
+\`\`\`
+**설명**: ...
+
+(예시 모두 포함 — Sample Input/Output 또는 入力例/出力例)
+
+---
+
+규칙:
+1. ${sourceLangRule}
+2. 변수명, 함수명, 자료구조명(예: array, hash map)은 영어 그대로
+3. 수식은 \`$...$\` 또는 \`$$...$$\` (AtCoder는 KaTeX 사용 — 원문 형식 그대로 보존)
+4. 어색한 직역 금지 (예: "당신은 주어집니다" 같은 표현 X)
+5. **이미지 보존**: \`<img src="...">\` 있으면 \`![설명](URL)\` 마크다운으로. URL 변경/단축 금지
+6. 마크다운 외 다른 설명/주석 추가 금지`;
+}
+
 export async function translateProblem(
   problem: Problem,
   onStream?: StreamCallback
 ): Promise<string> {
-  // platform 분기 — LeetCode는 번역, Programmers는 정리
-  const prompt =
-    problem.platform === 'Programmers'
-      ? buildProgrammersPrompt(problem as ProgrammersProblem)
-      : buildPrompt(problem as LeetCodeProblem);
+  // platform 분기 — LeetCode/AtCoder는 번역, Programmers는 정리
+  let prompt: string;
+  if (problem.platform === 'Programmers') {
+    prompt = buildProgrammersPrompt(problem as ProgrammersProblem);
+  } else if (problem.platform === 'AtCoder') {
+    prompt = buildAtcoderPrompt(problem as AtCoderProblem);
+  } else {
+    prompt = buildPrompt(problem as LeetCodeProblem);
+  }
 
   return withRetry(async () => {
     if (onStream) {

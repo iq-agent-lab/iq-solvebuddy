@@ -344,9 +344,14 @@ function renderRecent(): void {
 const SOLUTIONS_KEY = 'iq-leetbuddy:solutions';
 
 interface SolutionRecord {
-  /** v1.0+ LeetCode + Programmers. Phase 3+ 추가 예정 */
+  /** v1.0+ LeetCode + Programmers. v1.1+ AtCoder. Phase 4-5 추가 예정 */
   platform?: 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces' | 'BOJ';
-  frontendId: number;
+  /**
+   * 플랫폼별 식별자 표시용.
+   * LeetCode/Programmers는 숫자 (legacy 데이터 호환), AtCoder는 string (예: 'abc300_a').
+   * 통계 dashboard의 `#${frontendId}` 표시에 그대로 사용.
+   */
+  frontendId: number | string;
   title: string;
   titleSlug: string;
   language: string;
@@ -581,17 +586,21 @@ async function handleBackfill(): Promise<void> {
     }
 
     // IndexEntry → SolutionRecord (languages 배열 → 각 lang별 record로 펼침)
-    // Phase 1: LeetCode 풀이만 처리 (다른 플랫폼은 v1.0+에서)
+    // v1.0+: LeetCode + Programmers. v1.1+: AtCoder 추가.
+    //   LeetCode/Programmers는 problemId가 숫자 (parseInt OK), AtCoder는 string ('abc300_a')
     const backfilled: SolutionRecord[] = [];
     for (const e of indexEntries) {
-      if (e.platform !== 'LeetCode') continue;
+      // Codeforces/BOJ는 미지원 — Phase 4-5에서
+      if (e.platform !== 'LeetCode' && e.platform !== 'Programmers' && e.platform !== 'AtCoder') continue;
       const ts = new Date(e.savedAt).getTime();
       const savedAt = isNaN(ts) ? Date.now() : ts;
-      const frontendId = parseInt(e.problemId, 10);
-      if (isNaN(frontendId)) continue;
+      // AtCoder는 taskId(string) 그대로, 나머지는 parseInt
+      const frontendId: number | string =
+        e.platform === 'AtCoder' ? e.problemId : parseInt(e.problemId, 10);
+      if (typeof frontendId === 'number' && isNaN(frontendId)) continue;
       for (const lang of e.languages) {
         backfilled.push({
-          platform: 'LeetCode',
+          platform: e.platform,
           frontendId,
           title: e.title,
           titleSlug: e.slug,
@@ -947,14 +956,18 @@ async function handleFetch(): Promise<void> {
     // draft 있으면 복원 (작성 중이던 코드 자동 복구)
     maybeRestoreDraft();
 
-    // LeetCode submission 자동 가져오기 버튼은 LeetCode 전용 — Programmers는 hide
-    // (Programmers는 자동 fetch 미지원, 사용자가 직접 paste)
+    // LeetCode submission 자동 가져오기 버튼은 LeetCode 전용 — 다른 플랫폼은 hide
+    // (Programmers / AtCoder는 자동 fetch 미지원, 사용자가 직접 paste)
     const submissionRow = document.querySelector('.submission-pull-row') as HTMLElement | null;
+    const isLeetCode = !state.problem.platform || state.problem.platform === 'LeetCode';
     if (submissionRow) {
-      submissionRow.classList.toggle('hidden', state.problem.platform === 'Programmers');
+      submissionRow.classList.toggle('hidden', !isLeetCode);
     }
 
-    const platformLabel = state.problem.platform === 'Programmers' ? '[프로그래머스] ' : '';
+    const platformLabel =
+      state.problem.platform === 'Programmers' ? '[프로그래머스] '
+      : state.problem.platform === 'AtCoder' ? '[AtCoder] '
+      : '';
     setStatus(`${platformLabel}${state.problem.questionFrontendId}. ${state.problem.title} · 준비 완료`, 'ok');
   } catch (e: any) {
     const msg = e?.message || String(e);
@@ -1042,12 +1055,21 @@ function showUploadSuccess(result: UploadResultShape): void {
   }
 
   // 풀이 통계에 기록 — state에 problem/language 보존되어 있음
-  // platform 분기: LeetCode는 frontendId(int), Programmers는 lessonId(string → int parse OK)
+  // platform 분기:
+  //   LeetCode/Programmers는 frontendId가 숫자 (parseInt OK)
+  //   AtCoder는 taskId가 string ('abc300_a') — string 그대로 저장
   if (state.problem && state.selectedLang) {
-    const platform = state.problem.platform === 'Programmers' ? 'Programmers' : 'LeetCode';
+    const platform: SolutionRecord['platform'] =
+      state.problem.platform === 'Programmers' ? 'Programmers'
+      : state.problem.platform === 'AtCoder' ? 'AtCoder'
+      : 'LeetCode';
+    const frontendId: number | string =
+      state.problem.platform === 'AtCoder'
+        ? state.problem.questionFrontendId  // taskId 그대로
+        : parseInt(state.problem.questionFrontendId, 10);
     recordSolution({
       platform,
-      frontendId: parseInt(state.problem.questionFrontendId, 10),
+      frontendId,
       title: state.problem.title,
       titleSlug: state.problem.titleSlug,
       language: state.selectedLang,
@@ -1528,13 +1550,20 @@ async function handleVerifyGithub(): Promise<void> {
 // src/util/language.ts의 parseProblemInput과 동일 로직 (renderer는 import 불가)
 // 숫자 입력은 client에서 미리보기만 — 실제 해결은 main의 GraphQL 호출
 interface ClientParsed {
-  kind: 'slug' | 'numeric' | 'programmers' | 'empty';
+  kind: 'slug' | 'numeric' | 'programmers' | 'atcoder' | 'empty';
   value: string;
 }
 
 function parseProblemInputClient(input: string): ClientParsed {
   const trimmed = input.trim();
   if (!trimmed) return { kind: 'empty', value: '' };
+
+  // AtCoder URL — atcoder.jp/contests/{contestId}/tasks/{taskId}
+  const atcoderPattern = /atcoder\.jp\/contests\/[a-z0-9_]+\/tasks\/([a-z0-9_]+)/i;
+  const atcoderMatch = trimmed.match(atcoderPattern);
+  if (atcoderMatch) {
+    return { kind: 'atcoder', value: atcoderMatch[1].toLowerCase() };
+  }
 
   // Programmers URL — 본 도구가 LeetCode 우선이지만 동등하게 처리
   const programmersPattern = /programmers\.co\.kr\/learn\/courses\/\d+\/lessons\/(\d+)/i;
@@ -1574,6 +1603,13 @@ function updatePastePreview(): void {
   }
 
   const parsed = parseProblemInputClient(raw);
+
+  // AtCoder URL — taskId 미리보기
+  if (parsed.kind === 'atcoder') {
+    preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">AtCoder ${parsed.value}</span> 으로 가져오기`;
+    preview.classList.remove('hidden');
+    return;
+  }
 
   // Programmers URL — lesson id 미리보기
   if (parsed.kind === 'programmers') {

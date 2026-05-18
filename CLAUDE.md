@@ -2,7 +2,7 @@
 
 > 외부 사용자용은 README. 이 파일은 **Claude 세션 작업 컨텍스트** (어떻게 작업·왜 이 결정·다음 어디로).
 >
-> **마지막 업데이트**: 2026-05-18 (v1.0.0)
+> **마지막 업데이트**: 2026-05-18 (v1.1.0)
 
 **기호**: ✦ 시그니처 / ✓ 유지 / ❌ 하지 말 것
 
@@ -10,7 +10,7 @@
 
 ## 프로젝트 한눈에
 
-**LeetCode + 프로그래머스** 풀이를 **한국어로 정리**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 단일 commit으로 자동 정리**하는 **Electron 데스크톱 에이전트**.
+**LeetCode + 프로그래머스 + AtCoder** 풀이를 **한국어로 정리**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 단일 commit으로 자동 정리**하는 **Electron 데스크톱 에이전트**.
 
 **iq-agent-lab 행성 중 하나** — 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
@@ -105,7 +105,12 @@ npm run release            # version patch + push + GitHub Actions
 | Programmers = 정리 모드 (번역 X) | 유지 | 본문이 이미 한국어. translator.ts에 `buildProgrammersPrompt` 분기 — "번역 금지" 명시 + HTML 태그만 마크다운 변환. Problem union discriminator (`platform === 'Programmers'`)로 dispatch. SQL 문제도 동일 흐름 |
 | Programmers fetch = HTML scraping (cheerio) | 유지 | 공식 API 없음. `school.programmers.co.kr/learn/courses/30/lessons/{lessonId}` HTML fetch + cheerio로 selector 시도. 다중 selector fallback (사이트 업데이트 대응). Lv 3+ 로그인 필요는 친절 에러 — Phase 2.5에서 `persist:programmers` 임베드 활용 예정 |
 | Programmers path = `Programmers/{lessonId}-{slug}/` | 유지 | LeetCode와 달리 frontendId 없으니 lessonId 사용. slug는 한국어 보존 (cheerio slugify가 한글+dash). titleSlug가 한국어라도 git path는 UTF-8 안전. 인덱스 entry의 problemId = lessonId |
-| 캐시 key = platform prefix | 유지 | LeetCode와 Programmers 같은 식별자라도 분리. 파일명: LeetCode는 `{slug}.json` (legacy 호환), Programmers는 `programmers-{lessonId}.json`. 함수 시그니처: `readTranslationCache(platform, key)` |
+| 캐시 key = platform prefix | 유지 | 같은 식별자라도 플랫폼 간 분리. LeetCode는 `{slug}.json` (legacy 호환), 나머지는 `{platform-lower}-{key}.json` (예: `programmers-12345.json`, `atcoder-abc300_a.json`). 함수 시그니처: `readTranslationCache(platform, key)` |
+| AtCoder = 영어→한국어 번역 (LeetCode 패턴) | 유지 | 페이지에 영어+일본어 둘 다 표시. `extractStatement`가 영어 우선 → fallback 일본어. translator의 `buildAtcoderPrompt`가 lang hint(en/ja) 받아 prompt 조정. 일본어 → 한국어 번역도 합리적이지만 LLM 정확도 면에서 영어 우선 |
+| AtCoder fetch = HTML scraping (cheerio) | 유지 | 공식 API 없음. `atcoder.jp/contests/{contestId}/tasks/{taskId}` HTML fetch. 진행 중인 콘테스트는 비참가자 접근 차단(403) → 친절 에러. submission 자동 fetch는 로그인 필요 → v1.2+ Phase 3.5 |
+| AtCoder path = `AtCoder/{taskId}-{slug}/` | 유지 | taskId가 globally unique (contest prefix 포함, 예: `abc300_a`). titleSlug에 taskId 포함하므로 `entryFolder`는 `AtCoder/{slug}` (중복 prefix 방지 — 다른 플랫폼은 `{problemId}-{slug}` 패턴) |
+| AtCoder 난이도 = 점수 표시 (외부 API X) | 유지 | AtCoder 페이지엔 점수만 있음 (예: "Score: 300 points"). difficulty rating은 외부 API (kenkoooo.com/atcoder/...) 필요. 외부 의존성 추가 비용 vs 가치 — 점수가 사실상 콘테스트 내 상대 난이도 |
+| frontendId = `number \| string` | 유지 | v1.0까지 LeetCode/Programmers는 숫자 ID였지만 AtCoder는 string (`abc300_a`). SolutionRecord.frontendId 타입 확장 — 기존 데이터(number) 호환 + 새 데이터(AtCoder string) 수용. stats dashboard `#${frontendId}` 표시 그대로 작동 |
 | 풀이 레포 root README 자동 인덱스 | 유지 | uploadSolution이 매 풀이마다 root README marker 영역만 update. `<!-- iq-leetbuddy:problems:start/end -->` 사이만 touch — 사용자 자유 텍스트(위/아래) 보존. 같은 slug는 languages 합치고 savedAt 갱신. 실패 silent (풀이 commit 우선) |
 | 풀이 통계 localStorage (not SQLite) | 유지 | `better-sqlite3` native module은 electron rebuild 필요 + 플랫폼별 까다로움. localStorage JSON 배열로 단순화 — 오프라인 안전, 디바이스 sync 안 됨. 가치 90% 보존. 📊 모달에서 요약/난이도/언어/월별/최근 표시 |
 | 자동 업데이트 = polling (not electron-updater) | 유지 | electron-updater는 macOS unsigned 앱에서 squirrel.mac cert 요구로 fail. cert 비용 + 복잡도 큼. 대신 GitHub Releases API polling + footer pill로 알림만 — 다운로드는 기존 zip 흐름. dev 모드는 `app.isPackaged`로 skip |
@@ -195,7 +200,8 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 | `src/main/settings.ts` | `.env` 읽기/쓰기, `MANAGED_KEYS`, secret-skip 로직 |
 | `src/services/leetcode.ts` | LeetCode GraphQL fetch (`questionData`) |
 | `src/services/programmers.ts` | 프로그래머스 HTML scraping (cheerio, v1.0+) |
-| `src/services/translator.ts` | Claude translate(LeetCode) / organize(Programmers) — platform dispatch, streaming |
+| `src/services/atcoder.ts` | AtCoder HTML scraping (cheerio, v1.1+). 영어/일본어 statement |
+| `src/services/translator.ts` | Claude translate(LeetCode/AtCoder) / organize(Programmers) — platform dispatch, streaming |
 | `src/services/annotator.ts` | Claude annotate (회고 생성), streaming. Problem union 수용 |
 | `src/services/pipeline.ts` | `fetchAndTranslate` + `annotateAndUpload` 오케스트레이션 (platform 분기) |
 | `src/services/github.ts` | Octokit git data API, `fileNeedsUpdate`, `verifyConnection`, platform-aware path |
@@ -244,18 +250,18 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 
 ## 다음 단계 후보
 
-### 진행 가능 (Phase 2.5 — v1.1 후보)
-- **프로그래머스 임베드 세션** — Lv 3+ 로그인 필요 문제 접근. `persist:programmers` 파티션 + 임베드 LeetCode와 같은 패턴
-- **프로그래머스 submission 자동 fetch** — 사용자 마지막 통과 코드 자동 가져오기
-- **도구 이름 변경** — 사용자가 GitHub repo rename 후 README badge / Releases URL 정합성. 후보: `iq-solvebuddy` (1순위) / `iq-codebuddy` (2순위)
-- **Programmers 인덱스 column 다르게** — `lessonId`는 의미가 약함. 별도 column? 또는 슬러그를 강조?
-- **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip (LeetCode + Programmers 동일)
+### 진행 가능 (v1.2 후보)
+- **Codeforces (Phase 4)** — public API(`/api/problemset.problems`) + statement scraping. rating(800~3500) 기반 난이도 색깔 표시
+- **백준 BOJ (Phase 5)** — HTML scraping + solved.ac API 난이도(Bronze~Ruby). 한국어 원문이라 정리 모드 (프로그래머스 패턴 재사용)
+- **AtCoder Problems difficulty rating** — kenkoooo.com/atcoder 외부 API 호출해 점수 외 difficulty rating도 표시
+- **AtCoder submission 자동 fetch (Phase 3.5)** — 임베드 윈도우 + persist:atcoder 세션
+- **프로그래머스 임베드 세션 (Phase 2.5)** — Lv 3+ 로그인 필요 문제 접근
+- **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip (모든 플랫폼)
 - **에러 메시지 한국어화** — Octokit 원본 에러 메시지 wrapping (현재 부분만)
 
-### Phase 3-5 (장기)
-- **AtCoder** — HTML scraping, 영어/일본어 statement
-- **Codeforces** — public API + statement scraping, rating 기반 표시
-- **백준 (BOJ)** — HTML + solved.ac 난이도
+### 장기
+- 풀이 레포 RAG 검색 — "DP 문제 중 비슷한 것" 같은 자연어 검색
+- iq-blogger 연동 — RETROSPECTIVE → 블로그 포스트 자동 변환
 
 보류 / 안 함 결정은 **결정 매트릭스** 참조.
 

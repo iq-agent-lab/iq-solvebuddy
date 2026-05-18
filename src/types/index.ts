@@ -51,7 +51,29 @@ export interface ProgrammersProblem {
   url: string;
 }
 
-export type Problem = LeetCodeProblem | ProgrammersProblem;
+/**
+ * AtCoder 문제 — HTML scraping (공식 API 없음).
+ * statement는 영어 + 일본어 둘 다 페이지에 있음. translator가 영어 우선 → 한국어 번역.
+ */
+export interface AtCoderProblem {
+  platform: 'AtCoder';
+  contestId: string; // 예: 'abc300'
+  taskId: string;    // 예: 'abc300_a'
+  /** Problem union 호환 — taskId 그대로 */
+  questionFrontendId: string;
+  title: string;
+  titleSlug: string; // taskId-slug 형식
+  content: string;   // HTML (영어 또는 일본어)
+  difficulty: string; // 점수 표시 (예: '300점')
+  /** translator가 어떤 언어인지 알아야 prompt 분기 가능 */
+  statementLang: 'en' | 'ja' | 'unknown';
+  exampleTestcases: string;
+  topicTags: LeetCodeTag[]; // 비어있음 (AtCoder는 태그 없음)
+  codeSnippets: CodeSnippet[]; // 비어있음 (starter code 없음)
+  url: string;
+}
+
+export type Problem = LeetCodeProblem | ProgrammersProblem | AtCoderProblem;
 
 export interface UploadPayload {
   problem: Problem;
