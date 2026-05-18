@@ -2,7 +2,7 @@
 
 > 외부 사용자용은 README. 이 파일은 **Claude 세션 작업 컨텍스트** (어떻게 작업·왜 이 결정·다음 어디로).
 >
-> **마지막 업데이트**: 2026-05-18 (v1.1.0)
+> **마지막 업데이트**: 2026-05-18 (v1.2.0)
 
 **기호**: ✦ 시그니처 / ✓ 유지 / ❌ 하지 말 것
 
@@ -10,7 +10,7 @@
 
 ## 프로젝트 한눈에
 
-**LeetCode + 프로그래머스 + AtCoder** 풀이를 **한국어로 정리**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 단일 commit으로 자동 정리**하는 **Electron 데스크톱 에이전트**.
+**LeetCode + 프로그래머스 + AtCoder + Codeforces** 풀이를 **한국어로 정리**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 단일 commit으로 자동 정리**하는 **Electron 데스크톱 에이전트**.
 
 **iq-agent-lab 행성 중 하나** — 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
@@ -110,7 +110,13 @@ npm run release            # version patch + push + GitHub Actions
 | AtCoder fetch = HTML scraping (cheerio) | 유지 | 공식 API 없음. `atcoder.jp/contests/{contestId}/tasks/{taskId}` HTML fetch. 진행 중인 콘테스트는 비참가자 접근 차단(403) → 친절 에러. submission 자동 fetch는 로그인 필요 → v1.2+ Phase 3.5 |
 | AtCoder path = `AtCoder/{taskId}-{slug}/` | 유지 | taskId가 globally unique (contest prefix 포함, 예: `abc300_a`). titleSlug에 taskId 포함하므로 `entryFolder`는 `AtCoder/{slug}` (중복 prefix 방지 — 다른 플랫폼은 `{problemId}-{slug}` 패턴) |
 | AtCoder 난이도 = 점수 표시 (외부 API X) | 유지 | AtCoder 페이지엔 점수만 있음 (예: "Score: 300 points"). difficulty rating은 외부 API (kenkoooo.com/atcoder/...) 필요. 외부 의존성 추가 비용 vs 가치 — 점수가 사실상 콘테스트 내 상대 난이도 |
-| frontendId = `number \| string` | 유지 | v1.0까지 LeetCode/Programmers는 숫자 ID였지만 AtCoder는 string (`abc300_a`). SolutionRecord.frontendId 타입 확장 — 기존 데이터(number) 호환 + 새 데이터(AtCoder string) 수용. stats dashboard `#${frontendId}` 표시 그대로 작동 |
+| frontendId = `number \| string` | 유지 | v1.0까지 LeetCode/Programmers는 숫자 ID였지만 AtCoder(`abc300_a`) / Codeforces(`1234A`)는 string. SolutionRecord.frontendId 타입 확장 — 기존 데이터(number) 호환 + 새 데이터(string) 수용. stats dashboard `#${frontendId}` 표시 그대로 작동 |
+| AtCoder title 추출 = task letter 제거 | 유지 | AtCoder 페이지의 `<span class="h2">A - N-Choice Question</span>` / `<title>A - N-Choice Question - ...</title>` 형식. 첫 " - " 앞이 task letter("A") — 제거 필요. `stripTaskLetter`가 " - " 위치 가드(0 < idx < 5)로 안전 처리. 둘째 " - " 뒤는 contest name suffix → title 단계에서만 추가 제거 |
+| Codeforces = 영어→한국어 번역 (LeetCode 패턴) | 유지 | statement HTML이 `.problem-statement` 전체 (header/body/sample-tests/note 다 포함). MathJax 수식($...$) 보존. `buildCodeforcesPrompt`에서 .sample-tests 활용 명시 |
+| Codeforces fetch = HTML scraping (cheerio) | 유지 | 공식 API(`/api/problemset.problems`)는 메타데이터만 — statement는 HTML 필요. `problemset/problem/{contestId}/{index}` URL이 더 안정적 (진행 중 contest URL은 403 가능). 두 URL 형태 모두 인식 |
+| Codeforces path = `Codeforces/{contestId}-{index}-{slug}/` | 유지 | 예: `Codeforces/1234-A-two-pointers/`. titleSlug에 이미 다 포함 → `entryFolder`는 `Codeforces/${slug}` (중복 prefix 방지). problemId = `{contestId}{index}` (예: `1234A`) — 인덱스 표 # column |
+| Codeforces 난이도 = ★rating | 유지 | 페이지 sidebar의 difficulty tag(`*1500` 형식)에서 추출 → `★1500`으로 표시. Codeforces 표준 별표 표기법과 호환 |
+| 헤더 바로가기 = LeetCode만 임베드, 나머지 외부 | 유지 | LeetCode는 임베드 윈도우(`persist:leetcode` partition) — submission 자동 fetch 위해 persistent cookies 필요. Programmers/AtCoder/Codeforces는 submission 자동 fetch 미지원 → `shell.openExternal`로 기본 브라우저 (사용자 일반 로그인 활용). 각 플랫폼 submission 자동 fetch 추가 시 임베드 도입 검토 |
 | 풀이 레포 root README 자동 인덱스 | 유지 | uploadSolution이 매 풀이마다 root README marker 영역만 update. `<!-- iq-leetbuddy:problems:start/end -->` 사이만 touch — 사용자 자유 텍스트(위/아래) 보존. 같은 slug는 languages 합치고 savedAt 갱신. 실패 silent (풀이 commit 우선) |
 | 풀이 통계 localStorage (not SQLite) | 유지 | `better-sqlite3` native module은 electron rebuild 필요 + 플랫폼별 까다로움. localStorage JSON 배열로 단순화 — 오프라인 안전, 디바이스 sync 안 됨. 가치 90% 보존. 📊 모달에서 요약/난이도/언어/월별/최근 표시 |
 | 자동 업데이트 = polling (not electron-updater) | 유지 | electron-updater는 macOS unsigned 앱에서 squirrel.mac cert 요구로 fail. cert 비용 + 복잡도 큼. 대신 GitHub Releases API polling + footer pill로 알림만 — 다운로드는 기존 zip 흐름. dev 모드는 `app.isPackaged`로 skip |
@@ -201,7 +207,8 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 | `src/services/leetcode.ts` | LeetCode GraphQL fetch (`questionData`) |
 | `src/services/programmers.ts` | 프로그래머스 HTML scraping (cheerio, v1.0+) |
 | `src/services/atcoder.ts` | AtCoder HTML scraping (cheerio, v1.1+). 영어/일본어 statement |
-| `src/services/translator.ts` | Claude translate(LeetCode/AtCoder) / organize(Programmers) — platform dispatch, streaming |
+| `src/services/codeforces.ts` | Codeforces HTML scraping (cheerio, v1.2+). `.problem-statement` 전체 |
+| `src/services/translator.ts` | Claude translate(LeetCode/AtCoder/Codeforces) / organize(Programmers) — platform dispatch, streaming |
 | `src/services/annotator.ts` | Claude annotate (회고 생성), streaming. Problem union 수용 |
 | `src/services/pipeline.ts` | `fetchAndTranslate` + `annotateAndUpload` 오케스트레이션 (platform 분기) |
 | `src/services/github.ts` | Octokit git data API, `fileNeedsUpdate`, `verifyConnection`, platform-aware path |
@@ -250,13 +257,13 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 
 ## 다음 단계 후보
 
-### 진행 가능 (v1.2 후보)
-- **Codeforces (Phase 4)** — public API(`/api/problemset.problems`) + statement scraping. rating(800~3500) 기반 난이도 색깔 표시
+### 진행 가능 (v1.3 후보)
 - **백준 BOJ (Phase 5)** — HTML scraping + solved.ac API 난이도(Bronze~Ruby). 한국어 원문이라 정리 모드 (프로그래머스 패턴 재사용)
-- **AtCoder Problems difficulty rating** — kenkoooo.com/atcoder 외부 API 호출해 점수 외 difficulty rating도 표시
-- **AtCoder submission 자동 fetch (Phase 3.5)** — 임베드 윈도우 + persist:atcoder 세션
+- **Codeforces tag 추출** — `.tag-box`의 algorithmic tags(implementation, greedy, dp 등) 자동 추출
+- **AtCoder Problems difficulty rating** — kenkoooo.com/atcoder 외부 API로 점수 외 rating
+- **AtCoder/Codeforces submission 자동 fetch** — 임베드 윈도우 + persistent session (Phase 3.5/4.5)
 - **프로그래머스 임베드 세션 (Phase 2.5)** — Lv 3+ 로그인 필요 문제 접근
-- **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip (모든 플랫폼)
+- **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip
 - **에러 메시지 한국어화** — Octokit 원본 에러 메시지 wrapping (현재 부분만)
 
 ### 장기

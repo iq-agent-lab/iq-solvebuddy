@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('api', {
   openLeetCode: (url?: string) => ipcRenderer.invoke('open-leetcode', url),
   getLeetCodeUrl: () => ipcRenderer.invoke('get-leetcode-url'),
   pullLeetCodeUrl: () => ipcRenderer.invoke('pull-leetcode-url'),
+  openPlatformSite: (platform: 'Programmers' | 'AtCoder' | 'Codeforces') =>
+    ipcRenderer.invoke('open-platform-site', platform),
   fetchSubmission: (titleSlug: string) =>
     ipcRenderer.invoke('fetch-submission', titleSlug),
   hasAcceptedSubmission: (titleSlug: string) =>

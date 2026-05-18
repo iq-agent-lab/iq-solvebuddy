@@ -1,6 +1,6 @@
 // Renderer에서 호출하는 IPC 핸들러
 
-import { ipcMain, WebContents, dialog, BrowserWindow } from 'electron';
+import { ipcMain, WebContents, dialog, BrowserWindow, shell } from 'electron';
 import { fetchAndTranslate, annotateAndUpload } from '../services/pipeline';
 import { resetTranslatorClient } from '../services/translator';
 import { resetAnnotatorClient } from '../services/annotator';
@@ -162,6 +162,26 @@ export function registerIpcHandlers() {
   ipcMain.handle('open-leetcode', async (_event, url?: string) => {
     if (leetcodeOpener) leetcodeOpener(url);
     return { ok: true };
+  });
+
+  // ── 다른 플랫폼은 기본 브라우저에서 열기 ──
+  // LeetCode만 임베드 윈도우 (submission 자동 fetch 위해 persistent cookies 필요).
+  // Programmers/AtCoder/Codeforces는 submission 자동 fetch 미지원 → 외부 브라우저로 충분.
+  // v1.x+에서 각 플랫폼 submission 자동 fetch 추가 시 임베드 윈도우 도입 검토.
+  const PLATFORM_URLS: Record<string, string> = {
+    Programmers: 'https://school.programmers.co.kr/learn/challenges',
+    AtCoder: 'https://atcoder.jp/home',
+    Codeforces: 'https://codeforces.com/problemset',
+  };
+  ipcMain.handle('open-platform-site', async (_event, platform: string) => {
+    const url = PLATFORM_URLS[platform];
+    if (!url) return { ok: false, error: `지원하지 않는 플랫폼: ${platform}` };
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: toErrorMessage(err) };
+    }
   });
 
   // ── 임베드 LeetCode 윈도우의 현재 URL 조회 (메인 input '가져오기' 보조 버튼용) ──
