@@ -24,6 +24,14 @@ import {
 import { decryptProcessEnvSecrets, migrateSecretsIfNeeded } from './settings';
 import { checkForUpdates } from './update';
 
+// ─── userData 경로 호환성 ─────────────────────────────────────
+// v1.0+ 도구 이름이 iq-solvebuddy로 바뀌었지만, Electron의 userData 경로는
+// app.getName() 기반 — productName이 바뀌면 폴더도 바뀜.
+// 그러면 기존 사용자의 .env(API 키) / cache / persist:leetcode 세션이 모두 손실됨.
+// → setName으로 명시적으로 'iq-leetbuddy' 유지 (data 손실 방지, 사용자에게 invisible)
+// 단 어떤 path 조회보다 먼저 호출되어야 함.
+app.setName('iq-leetbuddy');
+
 // .env 로드 — 패키지 모드는 userData, dev 모드는 프로젝트 루트
 function loadEnv() {
   const envFile = app.isPackaged
@@ -83,7 +91,7 @@ const INJECT_SCRIPT = `
     btn = document.createElement('button');
     btn.id = BTN_ID;
     btn.type = 'button';
-    btn.textContent = '→ leetbuddy로 가져오기';
+    btn.textContent = '→ solvebuddy로 가져오기';
     btn.style.cssText = [
       'position:fixed',
       'bottom:24px',
@@ -115,8 +123,8 @@ const INJECT_SCRIPT = `
     btn.addEventListener('click', () => {
       // console.log를 main 프로세스가 console-message 이벤트로 캡처
       console.log(SENTINEL + location.href);
-      btn.textContent = '✓ leetbuddy로 보냄';
-      setTimeout(() => { btn.textContent = '→ leetbuddy로 가져오기'; }, 1600);
+      btn.textContent = '✓ solvebuddy로 보냄';
+      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
     });
     document.body.appendChild(btn);
   }
@@ -325,7 +333,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 600,
     show: false,
-    title: 'iq-leetbuddy',
+    title: 'iq-solvebuddy',
     backgroundColor: '#0f0e0d',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
@@ -339,7 +347,7 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   // 메인 윈도우 안에서 우리 file:// 외 navigation은 모두 차단하고 라우팅
-  // 이게 핵심: 원문 링크 클릭해도 leetbuddy UI가 안 사라짐
+  // 이게 핵심: 원문 링크 클릭해도 solvebuddy UI가 안 사라짐
   mainWindow.webContents.on('will-navigate', (event, navUrl) => {
     if (navUrl.startsWith('file://')) return;
     event.preventDefault();
@@ -445,7 +453,7 @@ function createTray() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: 'iq-leetbuddy 보이기',
+      label: 'iq-solvebuddy 보이기',
       accelerator: activeShortcut || undefined,
       click: showAndFocus,
     },
@@ -464,7 +472,7 @@ function createTray() {
     },
   ]);
 
-  tray.setToolTip(`iq-leetbuddy${accelLabel ? ` (${accelLabel})` : ''}`);
+  tray.setToolTip(`iq-solvebuddy${accelLabel ? ` (${accelLabel})` : ''}`);
   tray.setContextMenu(menu);
   tray.on('click', toggleWindow);
 }
@@ -475,7 +483,7 @@ function createAppMenu() {
   const menu = Menu.buildFromTemplate([
     ...(isMac
       ? [{
-          label: 'iq-leetbuddy',
+          label: 'iq-solvebuddy',
           submenu: [
             { role: 'about' as const },
             { type: 'separator' as const },
@@ -503,7 +511,7 @@ function createAppMenu() {
       label: 'View',
       submenu: [
         {
-          label: 'leetbuddy 보이기/포커스',
+          label: 'solvebuddy 보이기/포커스',
           accelerator: activeShortcut || undefined,
           click: showAndFocus,
         },

@@ -1,6 +1,6 @@
 // renderer.ts — Electron renderer (contextIsolation)
 // import는 type만 — 런타임 컴파일 후 erase되어 vanilla JS와 동일
-import type { LeetCodeProblem, UploadPayload, SettingsView, CheckConfigResult } from '../types';
+import type { Problem, UploadPayload, SettingsView, CheckConfigResult } from '../types';
 
 // ─── DOM helpers ─────────────────────────────────────────────
 // id로 element 조회. 모두 보장된 id라서 cast 안전.
@@ -44,6 +44,10 @@ let cmEditor: any = null;
 // 사용자가 step-3에서 코드 작성 중 앱 종료 시 데이터 손실 방지.
 // key 형식: 'iq-leetbuddy:draft:{slug}:{lang}'
 // upload 성공 시 해당 draft 자동 삭제.
+//
+// ⚠️ 모든 localStorage key prefix가 'iq-leetbuddy:' — v1.0+ 도구 이름이
+// iq-solvebuddy로 바뀌었지만 기존 사용자의 draft / theme / stats / recent /
+// preferred-lang 등이 손실되지 않도록 prefix 유지.
 const DRAFT_KEY_PREFIX = 'iq-leetbuddy:draft:';
 
 function currentDraftKey(): string | null {
@@ -159,7 +163,7 @@ function resetButton(btnId: string, originalText: string): void {
 
 // ─── app state ───────────────────────────────────────────────
 interface AppState {
-  problem: LeetCodeProblem | null;
+  problem: Problem | null;
   translation: string;
   selectedLang: string | null;
   lastUploadPayload: UploadPayload | null;
@@ -298,7 +302,7 @@ function readRecent(): RecentItem[] {
   }
 }
 
-function pushRecent(problem: LeetCodeProblem): void {
+function pushRecent(problem: Problem): void {
   try {
     const item: RecentItem = {
       frontendId: problem.questionFrontendId,
@@ -340,7 +344,7 @@ function renderRecent(): void {
 const SOLUTIONS_KEY = 'iq-leetbuddy:solutions';
 
 interface SolutionRecord {
-  /** Phase 1: 'LeetCode'만. Phase 2부터 다른 플랫폼 추가 */
+  /** v1.0+ LeetCode + Programmers. Phase 3+ 추가 예정 */
   platform?: 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces' | 'BOJ';
   frontendId: number;
   title: string;
@@ -738,17 +742,30 @@ interface CodeSnippetLite {
   code: string;
 }
 
+// Programmers 등 snippets 비어있을 때 fallback 언어 목록
+// 사용자가 직접 paste할 때도 lang/folder 결정에 필요
+const FALLBACK_SNIPPETS: CodeSnippetLite[] = [
+  { lang: 'Python3', langSlug: 'python3', code: '' },
+  { lang: 'Java', langSlug: 'java', code: '' },
+  { lang: 'JavaScript', langSlug: 'javascript', code: '' },
+  { lang: 'C++', langSlug: 'cpp', code: '' },
+  { lang: 'Kotlin', langSlug: 'kotlin', code: '' },
+  { lang: 'Swift', langSlug: 'swift', code: '' },
+  { lang: 'Go', langSlug: 'go', code: '' },
+  { lang: 'Ruby', langSlug: 'ruby', code: '' },
+  { lang: 'SQL', langSlug: 'mysql', code: '' },
+];
+
 function populateLanguageSelect(snippets: CodeSnippetLite[] | undefined): void {
   const select = $select('starter-lang-select');
   select.innerHTML = '';
 
-  if (!snippets || snippets.length === 0) {
-    $('starter-block').classList.add('hidden');
-    return;
-  }
+  // snippets 비면 fallback — Programmers 비로그인 케이스 등에서 필수
+  // (사용자가 직접 paste할 때 lang 선택 가능해야)
+  const effective = snippets && snippets.length > 0 ? snippets : FALLBACK_SNIPPETS;
 
   const PREFERRED_ORDER = ['java', 'python3', 'cpp', 'javascript', 'typescript', 'go', 'kotlin', 'rust'];
-  const sorted = [...snippets].sort((a, b) => {
+  const sorted = [...effective].sort((a, b) => {
     const ai = PREFERRED_ORDER.indexOf(a.langSlug);
     const bi = PREFERRED_ORDER.indexOf(b.langSlug);
     if (ai === -1 && bi === -1) return a.lang.localeCompare(b.lang);
@@ -930,7 +947,15 @@ async function handleFetch(): Promise<void> {
     // draft 있으면 복원 (작성 중이던 코드 자동 복구)
     maybeRestoreDraft();
 
-    setStatus(`${state.problem.questionFrontendId}. ${state.problem.title} · 준비 완료`, 'ok');
+    // LeetCode submission 자동 가져오기 버튼은 LeetCode 전용 — Programmers는 hide
+    // (Programmers는 자동 fetch 미지원, 사용자가 직접 paste)
+    const submissionRow = document.querySelector('.submission-pull-row') as HTMLElement | null;
+    if (submissionRow) {
+      submissionRow.classList.toggle('hidden', state.problem.platform === 'Programmers');
+    }
+
+    const platformLabel = state.problem.platform === 'Programmers' ? '[프로그래머스] ' : '';
+    setStatus(`${platformLabel}${state.problem.questionFrontendId}. ${state.problem.title} · 준비 완료`, 'ok');
   } catch (e: any) {
     const msg = e?.message || String(e);
     setStatus(`에러: ${msg}`, 'error');
@@ -1017,9 +1042,11 @@ function showUploadSuccess(result: UploadResultShape): void {
   }
 
   // 풀이 통계에 기록 — state에 problem/language 보존되어 있음
+  // platform 분기: LeetCode는 frontendId(int), Programmers는 lessonId(string → int parse OK)
   if (state.problem && state.selectedLang) {
+    const platform = state.problem.platform === 'Programmers' ? 'Programmers' : 'LeetCode';
     recordSolution({
-      platform: 'LeetCode',
+      platform,
       frontendId: parseInt(state.problem.questionFrontendId, 10),
       title: state.problem.title,
       titleSlug: state.problem.titleSlug,
@@ -1050,7 +1077,7 @@ function notifyUploadComplete(): void {
   const send = () => {
     if (!state.problem) return;
     try {
-      new Notification('✓ leetbuddy 업로드 완료', {
+      new Notification('✓ solvebuddy 업로드 완료', {
         body: `${state.problem.questionFrontendId}. ${state.problem.title} (${state.selectedLang})`,
         silent: false,
       });
@@ -1501,7 +1528,7 @@ async function handleVerifyGithub(): Promise<void> {
 // src/util/language.ts의 parseProblemInput과 동일 로직 (renderer는 import 불가)
 // 숫자 입력은 client에서 미리보기만 — 실제 해결은 main의 GraphQL 호출
 interface ClientParsed {
-  kind: 'slug' | 'numeric' | 'empty';
+  kind: 'slug' | 'numeric' | 'programmers' | 'empty';
   value: string;
 }
 
@@ -1509,7 +1536,14 @@ function parseProblemInputClient(input: string): ClientParsed {
   const trimmed = input.trim();
   if (!trimmed) return { kind: 'empty', value: '' };
 
-  // 숫자만 — frontendId
+  // Programmers URL — 본 도구가 LeetCode 우선이지만 동등하게 처리
+  const programmersPattern = /programmers\.co\.kr\/learn\/courses\/\d+\/lessons\/(\d+)/i;
+  const programmersMatch = trimmed.match(programmersPattern);
+  if (programmersMatch) {
+    return { kind: 'programmers', value: programmersMatch[1] };
+  }
+
+  // 숫자만 — LeetCode frontendId (Programmers는 명확한 URL 필요)
   if (/^\d+$/.test(trimmed)) {
     return { kind: 'numeric', value: trimmed };
   }
@@ -1540,6 +1574,13 @@ function updatePastePreview(): void {
   }
 
   const parsed = parseProblemInputClient(raw);
+
+  // Programmers URL — lesson id 미리보기
+  if (parsed.kind === 'programmers') {
+    preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">프로그래머스 #${parsed.value}</span> 으로 가져오기`;
+    preview.classList.remove('hidden');
+    return;
+  }
 
   // 숫자 입력 — frontendId 검색 미리 안내
   if (parsed.kind === 'numeric') {

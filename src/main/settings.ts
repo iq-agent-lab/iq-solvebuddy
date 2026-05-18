@@ -28,6 +28,10 @@ function envPath(): string {
   //   Windows: %APPDATA%/iq-leetbuddy/.env
   //   Linux: ~/.config/iq-leetbuddy/.env
   // 개발 모드: 프로젝트 루트
+  //
+  // 참고: v1.0+ 도구 이름이 iq-solvebuddy로 바뀌었지만 userData 폴더는
+  // 'iq-leetbuddy' 그대로 — main/index.ts의 `app.setName('iq-leetbuddy')` 로
+  // 명시 유지. 기존 사용자의 .env / cache / persist:leetcode 손실 방지.
   if (app.isPackaged) {
     return path.join(app.getPath('userData'), '.env');
   }

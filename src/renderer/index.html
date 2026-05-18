@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; script-src 'self'">
-  <title>iq-leetbuddy</title>
+  <title>iq-solvebuddy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -94,11 +94,18 @@
                 <li>아래 <strong>"↩ 임베드에서"</strong> 버튼</li>
               </ul>
             </div>
+            <div class="hint-card hint-card-wide">
+              <span class="hint-card-label">프로그래머스 (v1.0+)</span>
+              <div class="hint-card-examples hint-card-examples-stacked">
+                <code>https://school.programmers.co.kr/learn/courses/30/lessons/12345</code>
+              </div>
+              <span class="hint-card-note">전체 URL 붙여넣기 — 본문은 한국어 원문 그대로 보존 (번역 안 함)</span>
+            </div>
           </div>
         </details>
         <div class="input-row">
           <div class="input-with-clear">
-            <input id="problem-input" type="text" placeholder="LeetCode 문제 URL 또는 slug를 입력해주세요" autocomplete="off" spellcheck="false">
+            <input id="problem-input" type="text" placeholder="LeetCode/프로그래머스 URL 또는 slug를 입력해주세요" autocomplete="off" spellcheck="false">
             <button id="clear-input-btn" class="input-clear-btn hidden" aria-label="입력 지우기" title="입력 지우기" tabindex="-1">×</button>
           </div>
           <button id="pull-embed-btn" class="secondary pull-btn" title="임베드 LeetCode 윈도우의 현재 페이지 URL을 가져와 자동 fetch (⌘⇧↩)">
@@ -164,7 +171,7 @@
   </main>
 
   <footer class="app-footer">
-    <span>iq-agent-lab · v0.9.0</span>
+    <span>iq-agent-lab · v1.0.0</span>
     <span class="footer-divider">·</span>
     <span id="config-status">설정 확인 중...</span>
     <span class="footer-divider">·</span>
@@ -223,8 +230,8 @@
             <ol>
               <li>
                 아래 링크를 클릭하면 <strong>scope가 미리 체크된 발급 페이지</strong>가 열림:<br>
-                <a href="https://github.com/settings/tokens/new?scopes=repo&description=iq-leetbuddy" target="_blank" rel="noopener" class="help-link">
-                  → 새 PAT 발급하기 (repo scope, "iq-leetbuddy" description 미리 입력)
+                <a href="https://github.com/settings/tokens/new?scopes=repo&description=iq-solvebuddy" target="_blank" rel="noopener" class="help-link">
+                  → 새 PAT 발급하기 (repo scope, "iq-solvebuddy" description 미리 입력)
                 </a>
               </li>
               <li><strong>Expiration</strong>: 본인 보안 정책에 맞춰. 'No expiration'도 OK (개인 도구 한정).</li>

@@ -1,7 +1,7 @@
 // 사용자의 통과된 코드를 받아 가독성 개선 + 한국어 주석 + 회고 마크다운 생성
 
 import Anthropic from '@anthropic-ai/sdk';
-import { LeetCodeProblem } from '../types';
+import { Problem } from '../types';
 import { withRetry } from '../util/language';
 
 let _client: Anthropic | null = null;
@@ -22,7 +22,7 @@ export function resetAnnotatorClient() {
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 
 function buildPrompt(
-  problem: LeetCodeProblem,
+  problem: Problem,
   translation: string,
   code: string,
   language: string
@@ -96,7 +96,7 @@ function extractText(content: Array<{ type: string }>): string {
 }
 
 export async function annotateCode(
-  problem: LeetCodeProblem,
+  problem: Problem,
   translation: string,
   code: string,
   language: string,

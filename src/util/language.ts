@@ -92,40 +92,67 @@ export async function withRetry<T>(
 //   - SYMMETRIC-TREE
 //   - 1, 2024                (숫자만이면 frontendId — leetcode.ts에서 별도 해결)
 export interface ParsedInput {
-  /** 정규화된 slug. 숫자 입력이면 빈 문자열 + isNumericId=true */
+  /** v1.0+ platform 분기 */
+  platform: 'LeetCode' | 'Programmers';
+  /** LeetCode: 정규화된 slug. 숫자 입력이면 빈 문자열 + isNumericId=true */
   titleSlug: string;
-  /** 입력이 숫자만인 경우 (예: "1") — main 측에서 GraphQL로 frontendId → slug 해결 */
+  /** LeetCode: 입력이 숫자만인 경우 (예: "1") — frontendId → slug 해결 */
   isNumericId: boolean;
-  /** isNumericId일 때 원본 숫자 (예: "1") */
+  /** LeetCode: isNumericId일 때 원본 숫자 */
   frontendId: string | null;
+  /** Programmers: lesson ID (URL에서 추출) */
+  lessonId?: string;
 }
 
 export function parseProblemInput(input: string): ParsedInput {
   const trimmed = input.trim();
 
-  // 숫자만 — frontendId로 해결 (예: "1", "2024")
-  if (/^\d+$/.test(trimmed)) {
-    return { titleSlug: '', isNumericId: true, frontendId: trimmed };
+  // Programmers URL — 가장 먼저 체크
+  // https://school.programmers.co.kr/learn/courses/{courseId}/lessons/{lessonId}
+  const progMatch = trimmed.match(/programmers\.co\.kr\/learn\/courses\/\d+\/lessons\/(\d+)/i);
+  if (progMatch) {
+    return {
+      platform: 'Programmers',
+      lessonId: progMatch[1],
+      titleSlug: '',
+      isNumericId: false,
+      frontendId: null,
+    };
   }
 
-  // URL 패턴 매칭 — leetcode.com/cn, http(s) 선택, query/path 뒤는 무시
-  // cn 도메인도 같은 slug로 처리 (com에서 fetch — cn은 Cloudflare 직접 접근 불가)
+  // LeetCode 숫자만 — frontendId로 해결
+  if (/^\d+$/.test(trimmed)) {
+    return {
+      platform: 'LeetCode',
+      titleSlug: '',
+      isNumericId: true,
+      frontendId: trimmed,
+    };
+  }
+
+  // LeetCode URL 매칭 — com/cn 동일 처리 (com에서 fetch)
   const urlPattern = /leetcode\.(?:com|cn)\/problems\/([a-zA-Z0-9-]+)/i;
   const urlMatch = trimmed.match(urlPattern);
   if (urlMatch) {
     return {
+      platform: 'LeetCode',
       titleSlug: urlMatch[1].toLowerCase(),
       isNumericId: false,
       frontendId: null,
     };
   }
 
-  // 자유 텍스트 → slug 정규화
+  // 자유 텍스트 → LeetCode slug 정규화 (default platform)
   const slug = trimmed
     .toLowerCase()
-    .replace(/[\s_]+/g, '-')        // 공백/언더스코어 → dash
-    .replace(/[^a-z0-9-]/g, '')     // 영숫자/dash만 남김
-    .replace(/-+/g, '-')            // 연속 dash 하나로
-    .replace(/^-+|-+$/g, '');       // 양끝 dash 제거
-  return { titleSlug: slug, isNumericId: false, frontendId: null };
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return {
+    platform: 'LeetCode',
+    titleSlug: slug,
+    isNumericId: false,
+    frontendId: null,
+  };
 }

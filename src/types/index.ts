@@ -21,6 +21,7 @@ export interface CodeSnippet {
 }
 
 export interface LeetCodeProblem {
+  platform?: 'LeetCode'; // discriminator (v1.0+ — union 시 type narrowing)
   questionFrontendId: string;
   title: string;
   titleSlug: string;
@@ -31,8 +32,29 @@ export interface LeetCodeProblem {
   codeSnippets: CodeSnippet[];
 }
 
+/**
+ * 프로그래머스 문제 — HTML scraping (공식 API 없음).
+ * 본문이 이미 한국어라 *번역*이 아닌 *정리* 모드 사용 (translator).
+ */
+export interface ProgrammersProblem {
+  platform: 'Programmers';
+  lessonId: string;
+  /** LeetCode와 호환되도록 같은 필드명 — pipeline에서 union으로 다루기 위해 */
+  questionFrontendId: string; // = lessonId
+  title: string;
+  titleSlug: string; // slug from title (한글 + dash)
+  content: string; // HTML
+  difficulty: string; // 'Lv 0' ~ 'Lv 5'
+  exampleTestcases: string; // table 또는 빈
+  topicTags: LeetCodeTag[]; // 일반적으로 빈, 있으면 채움
+  codeSnippets: CodeSnippet[]; // starter code — 비로그인 시 빈 배열 가능
+  url: string;
+}
+
+export type Problem = LeetCodeProblem | ProgrammersProblem;
+
 export interface UploadPayload {
-  problem: LeetCodeProblem;
+  problem: Problem;
   translation: string;
   code: string;
   language: string;
@@ -45,9 +67,9 @@ export interface UploadResult {
 }
 
 export interface FetchProblemResult {
-  problem: LeetCodeProblem;
-  translation: string;       // 원본 마크다운 (GitHub 업로드용)
-  translationHtml: string;   // 렌더링된 HTML (UI 표시용)
+  problem: Problem;           // v1.0+ : LeetCodeProblem | ProgrammersProblem
+  translation: string;        // 원본 마크다운 (GitHub 업로드용. Programmers는 *정리*된 한국어)
+  translationHtml: string;    // 렌더링된 HTML (UI 표시용)
 }
 
 export interface IpcError {
@@ -132,7 +154,7 @@ export interface IqApi {
     titleSlug: string
   ) => Promise<{ proceed: boolean; dontAskAgain: boolean }>;
   updateRetrospective: (payload: {
-    problem: LeetCodeProblem;
+    problem: Problem;
     language: string;
     annotated: string;
   }) => Promise<IpcResult<UploadResult>>;
