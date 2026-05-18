@@ -15,6 +15,7 @@
 
 import * as cheerio from 'cheerio';
 import { AtCoderProblem } from '../types';
+import { getAtcoderDifficulty } from './atcoderModels';
 
 const BASE_URL = 'https://atcoder.jp';
 
@@ -188,6 +189,15 @@ export async function fetchAtcoderProblem(ref: AtCoderTaskRef): Promise<AtCoderP
   }
 
   const score = extractScore($);
+  // difficulty rating은 외부 API (kenkoooo.com) — 캐시된 경우 빠르고, 첫 호출은 5초 정도
+  // 실패해도 점수만 표시되도록 silent fallback
+  const diffRating = await getAtcoderDifficulty(ref.taskId);
+  // 표기: "300점 · 난이도 1234" / 난이도 < 0이면 "300점 · 난이도 ≤0" / null이면 "300점"
+  let difficultyLabel = score;
+  if (diffRating !== null) {
+    const ratingLabel = diffRating < 0 ? '≤0' : String(diffRating);
+    difficultyLabel = `${score} · 난이도 ${ratingLabel}`;
+  }
   const exampleTestcases = extractExamples($, statementHtml);
 
   // path-safe slug — taskId-titleSlug 형식
@@ -203,7 +213,7 @@ export async function fetchAtcoderProblem(ref: AtCoderTaskRef): Promise<AtCoderP
     title,
     titleSlug: slug,
     content: statementHtml,
-    difficulty: score,
+    difficulty: difficultyLabel,
     statementLang: lang,
     exampleTestcases,
     topicTags: [],

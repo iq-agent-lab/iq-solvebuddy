@@ -23,6 +23,7 @@ import {
 } from './ipc';
 import { decryptProcessEnvSecrets, migrateSecretsIfNeeded } from './settings';
 import { checkForUpdates } from './update';
+import { prewarmAtcoderModels } from '../services/atcoderModels';
 
 // ─── userData 경로 호환성 ─────────────────────────────────────
 // v1.0+ 도구 이름이 iq-solvebuddy로 바뀌었지만, Electron의 userData 경로는
@@ -583,6 +584,9 @@ app.whenReady().then(async () => {
     mainWindow?.show();
     // 부팅 후 비동기 update 체크 (dev에선 skip됨)
     checkForUpdates(mainWindow);
+    // AtCoder difficulty rating 모델 background prewarm — 첫 AtCoder fetch 대기 시간 제거
+    // 5~10MB JSON gzip — 5초 정도. 실패해도 silent (점수만 표시되어도 무해)
+    prewarmAtcoderModels();
   });
 
   app.on('activate', () => {

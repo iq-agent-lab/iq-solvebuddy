@@ -835,11 +835,33 @@ const HLJS_LANG_MAP: Record<string, string> = {
   erlang: 'erlang',
 };
 
-const NO_SNIPPET_MESSAGE = `// 이 언어의 시작 코드가 LeetCode에 등록되어 있지 않아요.
+// 플랫폼별 starter code 미제공 메시지
+// LeetCode/Programmers: 일부 언어만 starter 없을 수 있음 (대부분 있음)
+// AtCoder/Codeforces: 항상 starter 없음 (사이트 자체가 제공 안 함)
+function noSnippetMessage(problem: Problem | null): string {
+  if (!problem || problem.platform === 'AtCoder' || problem.platform === 'Codeforces') {
+    const platformName =
+      problem?.platform === 'AtCoder' ? 'AtCoder'
+      : problem?.platform === 'Codeforces' ? 'Codeforces'
+      : '이 플랫폼';
+    return `// ${platformName}은 시작 코드를 제공하지 않아요.
+//
+// 위에서 풀이 언어만 선택 → 03 단계에 코드 직접 붙여넣기 (또는 가져오기)`;
+  }
+  if (problem.platform === 'Programmers') {
+    return `// 프로그래머스 시작 코드가 비어있어요 (비로그인 상태라 가져오지 못함).
+//
+// 다음 중 하나로 진행:
+//   1) 위에서 다른 언어 선택 (있을 수도 있음)
+//   2) 프로그래머스 페이지에서 시작 코드 직접 복사 → 03 단계에 붙여넣기`;
+  }
+  // LeetCode (platform 미지정 포함)
+  return `// 이 언어의 시작 코드가 LeetCode에 등록되어 있지 않아요.
 //
 // 다음 중 하나로 진행:
 //   1) 위에서 다른 언어 선택
 //   2) LeetCode 페이지에서 시작 코드를 직접 복사 → 03 단계에 붙여넣기`;
+}
 
 // 마크다운 렌더링된 영역(번역/회고)의 pre code 블록들에 syntax highlighting 적용.
 // streaming 중 매 청크마다 호출하면 부하 — final HTML 교체 시점에만 한 번 호출.
@@ -875,7 +897,7 @@ function updateStarterCode(): void {
   const snip = state.problem.codeSnippets?.find((s) => s.langSlug === slug);
   const codeEl = $('starter-code');
 
-  codeEl.textContent = snip ? snip.code : NO_SNIPPET_MESSAGE;
+  codeEl.textContent = snip ? snip.code : noSnippetMessage(state.problem);
 
   // highlight.js 적용
   if (window.hljs && snip && slug) {

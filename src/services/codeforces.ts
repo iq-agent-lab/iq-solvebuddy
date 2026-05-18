@@ -106,25 +106,35 @@ function extractStatement($: cheerio.CheerioAPI): string {
   return $stmt.html()?.trim() || '';
 }
 
-// 난이도 — 문제 페이지 sidebar의 rating tag
-// Codeforces는 *1500 형식 (별표 + 숫자) 또는 단순 숫자 tag
-function extractRating($: cheerio.CheerioAPI): string {
-  // sidebar의 problem tags 영역
-  const candidates = [
-    '.tag-box[title*="Difficulty"]',
-    '.tag-box.tag-bottom',
-    '.roundbox.sidebox span.tag-box',
-  ];
-  for (const sel of candidates) {
-    const elements = $(sel);
-    for (let i = 0; i < elements.length; i++) {
-      const t = $(elements[i]).text().trim();
-      // "*1500" 또는 "1500" 형식 매칭
-      const m = t.match(/\*?(\d{3,4})/);
-      if (m) return `★${m[1]}`;
+// .tag-box 영역에서 rating + algorithmic tags 분리 추출
+// rating: '*1500' 형식 (별표 + 숫자)
+// algorithmic tags: 'greedy', 'dp', 'implementation', ... (별표 없음)
+//
+// 같은 selector를 공유하므로 한 번 순회하며 둘 다 추출
+function extractRatingAndTags($: cheerio.CheerioAPI): { rating: string; tags: string[] } {
+  const tags: string[] = [];
+  let rating = '?';
+
+  // 모든 .tag-box 순회 — sidebar 또는 problem-statement 안
+  $('.tag-box').each((_i, el) => {
+    const t = $(el).text().trim();
+    if (!t) return;
+
+    // rating: "*1500" 형식 (별표로 시작, 숫자 3~4자리)
+    const ratingMatch = t.match(/^\*(\d{3,4})$/);
+    if (ratingMatch) {
+      rating = `★${ratingMatch[1]}`;
+      return;
     }
-  }
-  return '?';
+
+    // algorithmic tag: 알파벳/공백/하이픈 — 별표/숫자 단독 제외
+    // 길이 가드: 너무 길면 다른 종류의 tag (피하기)
+    if (t.length > 0 && t.length < 40 && /^[a-z][a-z0-9\s\-]+$/i.test(t)) {
+      tags.push(t.toLowerCase());
+    }
+  });
+
+  return { rating, tags };
 }
 
 // 입출력 예시는 statement HTML 안에 .sample-tests로 포함되어 있음
@@ -174,8 +184,14 @@ export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise
     );
   }
 
-  const rating = extractRating($);
+  const { rating, tags } = extractRatingAndTags($);
   const exampleTestcases = extractExamples($);
+
+  // tag → LeetCodeTag 형태로 변환 (Problem union이 같은 구조 공유)
+  const topicTags = tags.map((name) => ({
+    name,
+    slug: name.replace(/\s+/g, '-'),
+  }));
 
   // path-safe slug — contestId-index-titleSlug 형식
   // 예: '1234-A-two-pointers'
@@ -192,7 +208,7 @@ export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise
     content,
     difficulty: rating,
     exampleTestcases,
-    topicTags: [],
+    topicTags,
     codeSnippets: [],
     url: displayUrl,
   };

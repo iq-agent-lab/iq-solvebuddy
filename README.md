@@ -8,7 +8,7 @@
 
 iq-agent-lab 행성 중 하나. 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
-**현재 버전: v1.2.0** — LeetCode + 프로그래머스 + AtCoder + Codeforces (Phase 1-4 완료). 백준(BOJ)은 Phase 5에서 추가 예정. 자세한 진척은 [로드맵](#로드맵) 참조.
+**현재 버전: v1.3.0** — LeetCode + 프로그래머스 + AtCoder + Codeforces (Phase 1-4 완료, 메타데이터 정교화). 백준(BOJ)은 보류 (서버 이슈), 각 플랫폼 submission 자동 fetch는 Phase 2.5-4.5에서 추가 예정. 자세한 진척은 [로드맵](#로드맵) 참조.
 
 > 플랫폼별 statement 정책: **LeetCode/AtCoder/Codeforces**는 영어 원문 → 한국어 번역. **프로그래머스**는 한국어 원문 → 정리만 (HTML→마크다운). **AtCoder**는 영어 우선 + 일본어 fallback.
 
@@ -652,15 +652,18 @@ iq-solvebuddy/
 - [x] **AtCoder title 추출 버그 fix** — "A - N-Choice Question"에서 task letter "A" 제거 후 task name만 추출 (`stripTaskLetter` 헬퍼)
 - [x] **헤더 바로가기 버튼 4개** — LeetCode(임베드) / Programmers / AtCoder / Codeforces (외부 브라우저). submission 자동 fetch는 LeetCode만이라 임베드도 LeetCode만 유지
 
-### v1.3+ (다음 후보)
+### v1.3.x (완료) — 메타데이터 정교화
 
-- [ ] **백준 BOJ (Phase 5)** — HTML scraping + solved.ac API 난이도 (Bronze V ~ Ruby I). 한국어 원문이라 정리 모드
-- [ ] **Codeforces tag 추출** — `.tag-box`의 algorithmic tags(implementation, greedy, dp 등) 자동
-- [ ] **AtCoder difficulty rating** — kenkoooo.com/atcoder 외부 API로 점수 외 rating 추가
-- [ ] **AtCoder submission 자동 fetch (Phase 3.5)** — `persist:atcoder` 임베드 세션
-- [ ] **Codeforces submission 자동 fetch (Phase 4.5)** — `persist:codeforces` 임베드 세션
-- [ ] **프로그래머스 임베드 세션 (Phase 2.5)** — Lv 3+ 로그인 필요 문제도 가져오기
-- [ ] **프로그래머스 submission 자동 fetch** — 사용자 마지막 통과 코드 자동 가져오기
+- [x] **AtCoder starter code 메시지 fix** — LeetCode 하드코딩 메시지를 platform별로 분기 (`noSnippetMessage(problem)`). AtCoder/CF는 "시작 코드 제공 안 함", Programmers는 비로그인 케이스 안내
+- [x] **Codeforces tag 추출** — `.tag-box`에서 rating(`*1500`)과 algorithmic tags(greedy/dp 등) 통합 순회로 분리. 태그가 prompt에 포함되어 번역에 도움
+- [x] **AtCoder difficulty rating** — kenkoooo.com `problem-models.json` (IRT 기반). 30MB+ JSON gzip ~5-10MB · 24h disk 캐시 + 메모리 캐시 + 부팅 prewarm. 표기: "300점 · 난이도 1234" / 음수면 "≤0"
+
+### v1.4+ (다음 후보) — submission 자동 fetch
+
+- [ ] **AtCoder submission 자동 fetch (Phase 3.5)** — `persist:atcoder` 임베드 윈도우. 로그인 세션 활용해 마지막 통과 코드 가져오기
+- [ ] **Codeforces submission 자동 fetch (Phase 4.5)** — `persist:codeforces` 임베드 + submission API 또는 scraping
+- [ ] **프로그래머스 임베드 + submission (Phase 2.5)** — `persist:programmers` 임베드. Lv 3+ 로그인 필요 문제도 가져오기
+- [ ] **백준 BOJ (Phase 5)** — 보류 (서버 종료 이슈). 향후 재개 시 진행
 
 - [ ] **풀이 통계 native sync** — better-sqlite3 또는 localStorage → gist 백업 (디바이스 간 sync)
 - [ ] **CodeMirror addons** — 검색 UI(panel), 코드 fold, line wrapping toggle
