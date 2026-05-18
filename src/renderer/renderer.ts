@@ -985,27 +985,31 @@ async function handleFetch(): Promise<void> {
     // draft 있으면 복원 (작성 중이던 코드 자동 복구)
     maybeRestoreDraft();
 
-    // submission 자동 가져오기 버튼 — LeetCode / AtCoder / Codeforces 지원 (모두 임베드 윈도우)
-    // Programmers만 미지원 (v1.6+ Phase 2.5)
+    // submission 자동 가져오기 버튼 — 4개 플랫폼 모두 지원 (v1.6+ 풀 패리티)
     const submissionRow = document.querySelector('.submission-pull-row') as HTMLElement | null;
     const platform = state.problem.platform;
     const supportsAutoFetch =
       !platform ||
       platform === 'LeetCode' ||
       platform === 'AtCoder' ||
-      platform === 'Codeforces';
+      platform === 'Codeforces' ||
+      platform === 'Programmers';
     if (submissionRow) {
       submissionRow.classList.toggle('hidden', !supportsAutoFetch);
     }
-    // 버튼 라벨 plat별 분기
+    // 버튼 라벨 platform별 분기. 프로그래머스는 "마지막 작성 코드" — 다른 플랫폼은 "최근 통과 코드"
     const fetchBtn = $btn('fetch-submission-btn');
     const fetchBtnContent = fetchBtn.querySelector('.btn-content') as HTMLElement | null;
     if (fetchBtnContent) {
-      const platName =
-        platform === 'AtCoder' ? 'AtCoder'
-        : platform === 'Codeforces' ? 'Codeforces'
-        : 'LeetCode';
-      fetchBtnContent.textContent = `↩ ${platName}에서 최근 통과 코드 가져오기`;
+      if (platform === 'Programmers') {
+        fetchBtnContent.textContent = '↩ 프로그래머스 임베드에서 코드 가져오기';
+      } else {
+        const platName =
+          platform === 'AtCoder' ? 'AtCoder'
+          : platform === 'Codeforces' ? 'Codeforces'
+          : 'LeetCode';
+        fetchBtnContent.textContent = `↩ ${platName}에서 최근 통과 코드 가져오기`;
+      }
     }
 
     const platformLabel =
@@ -1700,10 +1704,9 @@ function updatePastePreview(): void {
   preview.classList.add('hidden');
 }
 
-// ─── pull from embed (LeetCode / AtCoder / Codeforces 셋 다 시도) ────────
-// 어느 임베드 윈도우든 현재 URL이 있으면 끌어옴.
-// 우선순위: LeetCode → AtCoder → Codeforces (먼저 발견된 게 currently-relevant)
-// 셋 다 없으면 친절 에러.
+// ─── pull from embed (4개 임베드 윈도우 중 떠있는 것 끌어옴) ────────
+// 우선순위: LeetCode → AtCoder → Codeforces → Programmers
+// 모두 없으면 친절 에러.
 async function handlePullFromEmbed(): Promise<void> {
   const btn = $btn('pull-embed-btn');
   btn.disabled = true;
@@ -1718,13 +1721,18 @@ async function handlePullFromEmbed(): Promise<void> {
         url = ac.url;
       } else {
         const cf = await window.api.getCodeforcesUrl();
-        if (cf.ok && cf.url) url = cf.url;
+        if (cf.ok && cf.url) {
+          url = cf.url;
+        } else {
+          const pg = await window.api.getProgrammersUrl();
+          if (pg.ok && pg.url) url = pg.url;
+        }
       }
     }
 
     if (!url) {
       setStatus(
-        '임베드 윈도우가 열려있지 않아요 — 헤더의 LeetCode / AtCoder / Codeforces 버튼으로 먼저 열어주세요',
+        '임베드 윈도우가 열려있지 않아요 — 헤더의 플랫폼 버튼으로 먼저 열어주세요',
         'error'
       );
       return;
@@ -1791,7 +1799,7 @@ $select('starter-lang-select').addEventListener('change', (e: Event) => {
 });
 
 $btn('open-leetcode-btn').addEventListener('click', () => window.api.openLeetCode());
-$btn('open-programmers-btn').addEventListener('click', () => window.api.openPlatformSite('Programmers'));
+$btn('open-programmers-btn').addEventListener('click', () => window.api.openProgrammers());
 $btn('open-atcoder-btn').addEventListener('click', () => window.api.openAtcoder());
 $btn('open-codeforces-btn').addEventListener('click', () => window.api.openCodeforces());
 
@@ -1832,9 +1840,10 @@ async function handleFetchSubmission(): Promise<void> {
   const platName =
     platform === 'AtCoder' ? 'AtCoder'
     : platform === 'Codeforces' ? 'Codeforces'
+    : platform === 'Programmers' ? '프로그래머스'
     : 'LeetCode';
   setButtonLoading('fetch-submission-btn', `${platName}에서 코드 가져오는 중...`);
-  setStatus(`${platName} 세션으로 최근 통과 코드 fetch...`, 'busy');
+  setStatus(`${platName} 세션으로 코드 fetch...`, 'busy');
 
   try {
     // 플랫폼별 payload 분기
@@ -1858,6 +1867,15 @@ async function handleFetchSubmission(): Promise<void> {
         platform: 'Codeforces',
         contestId: cfProblem.contestId,
         index: cfProblem.index,
+      });
+    } else if (platform === 'Programmers') {
+      const pgProblem = state.problem as { lessonId?: string };
+      if (!pgProblem.lessonId) {
+        throw new Error('프로그래머스 문제 메타데이터 누락 — 다시 불러오기 해주세요');
+      }
+      r = await window.api.fetchSubmission({
+        platform: 'Programmers',
+        lessonId: pgProblem.lessonId,
       });
     } else {
       // LeetCode (legacy string 형태)

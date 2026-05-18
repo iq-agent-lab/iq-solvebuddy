@@ -11,9 +11,11 @@
 // 실패 시 친절 에러로 fallback.
 
 import * as cheerio from 'cheerio';
+import { session } from 'electron';
 import { ProgrammersProblem } from '../types';
 
 const BASE_URL = 'https://school.programmers.co.kr';
+const PARTITION = 'persist:programmers';
 
 const COMMON_HEADERS = {
   'User-Agent':
@@ -21,6 +23,22 @@ const COMMON_HEADERS = {
   'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 };
+
+// 임베드 세션 cookies — Lv 3+ 로그인 필요 문제 fetch 시 fallback
+async function getProgrammersCookieHeader(): Promise<string> {
+  try {
+    const ses = session.fromPartition(PARTITION);
+    const cookies = await ses.cookies.get({ domain: '.programmers.co.kr' });
+    if (cookies.length === 0) {
+      const alt = await ses.cookies.get({ domain: 'programmers.co.kr' });
+      cookies.push(...alt);
+    }
+    if (cookies.length === 0) return '';
+    return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  } catch {
+    return '';
+  }
+}
 
 // 한국어 제목 → path-safe slug
 // 한글 보존 + 공백 → dash + 특수문자 제거. 너무 길면 80자로 자름.
@@ -141,18 +159,18 @@ function extractExampleTestcases($: cheerio.CheerioAPI, contentHtml: string): st
   return rows.join('\n');
 }
 
-export async function fetchProgrammersProblem(lessonId: string): Promise<ProgrammersProblem> {
-  if (!/^\d+$/.test(lessonId)) {
-    throw new Error(`프로그래머스 lessonId가 잘못됐어요: "${lessonId}" — 숫자만 가능`);
-  }
+// 페이지 HTML을 fetch — 임베드 cookies 우선 사용 (Lv 3+ 로그인 필요 문제 대응)
+// cookies 없거나 본문 못 받으면 비로그인 fetch fallback
+async function fetchProgrammersHtml(url: string): Promise<{ html: string; usedCookies: boolean }> {
+  const cookieHeader = await getProgrammersCookieHeader();
+  const headers: Record<string, string> = { ...COMMON_HEADERS };
+  if (cookieHeader) headers.Cookie = cookieHeader;
 
-  const url = `${BASE_URL}/learn/courses/30/lessons/${lessonId}`;
-
-  const res = await fetch(url, { headers: COMMON_HEADERS });
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     if (res.status === 404) {
       throw new Error(
-        `프로그래머스에서 문제 #${lessonId}를 찾을 수 없어요 — URL을 확인해주세요`
+        `프로그래머스에서 문제를 찾을 수 없어요 (HTTP 404) — URL을 확인해주세요`
       );
     }
     if (res.status === 429) {
@@ -160,24 +178,34 @@ export async function fetchProgrammersProblem(lessonId: string): Promise<Program
     }
     throw new Error(`프로그래머스 응답 오류 (HTTP ${res.status})`);
   }
+  return { html: await res.text(), usedCookies: Boolean(cookieHeader) };
+}
 
-  const html = await res.text();
+export async function fetchProgrammersProblem(lessonId: string): Promise<ProgrammersProblem> {
+  if (!/^\d+$/.test(lessonId)) {
+    throw new Error(`프로그래머스 lessonId가 잘못됐어요: "${lessonId}" — 숫자만 가능`);
+  }
+
+  const url = `${BASE_URL}/learn/courses/30/lessons/${lessonId}`;
+
+  const { html, usedCookies } = await fetchProgrammersHtml(url);
   const $ = cheerio.load(html);
 
   const title = extractTitle($);
   if (!title) {
-    throw new Error(
-      `프로그래머스 페이지에서 제목을 찾을 수 없어요 — 페이지 구조 변경 가능성 또는 ` +
-        `로그인 필요한 문제 (Lv 3+). 임베드 LeetCode 윈도우처럼 프로그래머스 로그인 ` +
-        `세션 활용은 다음 release(v1.1+)에서 지원 예정`
-    );
+    // cookies 사용했는데도 못 받으면 진짜 없거나 권한 부족, 미사용이면 로그인 안내
+    const loginHint = usedCookies
+      ? `페이지 구조 변경 가능성. 임베드 윈도우에서 해당 문제 페이지가 정상적으로 보이는지 확인해주세요`
+      : `로그인 필요한 문제 (Lv 3+)일 수 있어요. 헤더 프로그래머스 버튼으로 임베드 윈도우 열고 로그인 후 다시 시도해주세요`;
+    throw new Error(`프로그래머스 페이지에서 제목을 찾을 수 없어요 — ${loginHint}`);
   }
 
   const content = extractContent($);
   if (!content) {
-    throw new Error(
-      `프로그래머스 페이지에서 문제 본문을 찾을 수 없어요 — 로그인이 필요한 문제일 수 있음`
-    );
+    const loginHint = usedCookies
+      ? `페이지 구조 변경 가능성`
+      : `로그인이 필요한 문제일 수 있어요. 헤더 프로그래머스 버튼으로 임베드 열고 로그인 후 재시도`;
+    throw new Error(`프로그래머스 페이지에서 문제 본문을 찾을 수 없어요 — ${loginHint}`);
   }
 
   const difficulty = extractDifficulty($);

@@ -8,7 +8,7 @@
 
 iq-agent-lab 행성 중 하나. 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
-**현재 버전: v1.5.0** — LeetCode + 프로그래머스 + AtCoder + Codeforces (Phase 1-4 완료) + 3개 플랫폼 submission 자동 fetch (LeetCode/AtCoder/Codeforces 임베드). 프로그래머스 임베드 + submission은 Phase 2.5에서 추가 예정. 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
+**현재 버전: v1.6.0** — 🎉 **4개 플랫폼 풀 패리티 마일스톤**. LeetCode / 프로그래머스 / AtCoder / Codeforces 모두 임베드 윈도우 + submission 자동 fetch. 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
 
 > 플랫폼별 statement 정책: **LeetCode/AtCoder/Codeforces**는 영어 원문 → 한국어 번역. **프로그래머스**는 한국어 원문 → 정리만 (HTML→마크다운). **AtCoder**는 영어 우선 + 일본어 fallback.
 
@@ -678,10 +678,21 @@ iq-solvebuddy/
 - [x] **fetch-submission IPC payload 확장** — `{platform:'Codeforces', contestId, index}` 추가
 - [x] **pull-embed-btn 3-tier fallback** — LeetCode → AtCoder → Codeforces 순으로 떠있는 임베드 윈도우 URL 끌어옴
 
-### v1.6+ (다음 후보) — Phase 2.5
+### v1.6.x (완료) — Phase 2.5: 프로그래머스 임베드 + submission → 🎉 4개 플랫폼 풀 패리티
 
-- [ ] **프로그래머스 임베드 + submission (Phase 2.5)** — `persist:programmers` 임베드. Lv 3+ 로그인 필요 문제도 가져오기. 마지막 미진행 플랫폼
-- [ ] **AtCoder/Codeforces Accepted 사전 확인** — LeetCode 패턴 적용. 풀이 업로드 전 AC 있는지 확인 → 없으면 dialog override
+- [x] **프로그래머스 임베드 윈도우** — `persist:programmers` 영속 세션. LeetCode/AtCoder/CF 패턴 평행
+- [x] **Lv 3+ 로그인 필요 문제 fetch** — `fetchProgrammersHtml`가 임베드 cookies 우선 활용. 비로그인 fetch 못 받으면 cookies retry 형태로 fallback. 같은 partition (`persist:programmers`) → 자동 통합
+- [x] **ace editor 코드 자동 추출** — 프로그래머스는 submission API 없음 → 임베드 윈도우의 `webContents.executeJavaScript`로 ace editor 값 직접 추출 (`ace.edit(el).getValue()` + mode 검사)
+- [x] **ace mode → langSlug 매핑** — `ace/mode/c_cpp` → `cpp`, `ace/mode/mysql` → `mysql` 등
+- [x] **현재 페이지 검증** — fetch 시 임베드 윈도우의 현재 URL이 해당 lessonId 페이지에 있는지 검사. 다른 페이지면 친절 에러
+- [x] **pull-embed-btn 4-tier fallback** — LeetCode → AtCoder → Codeforces → Programmers
+- [x] **`open-platform-site` IPC 사라짐** — 4개 플랫폼 모두 임베드라 외부 브라우저 fallback 채널 불필요 (legacy noop만 유지)
+
+### v1.7+ (다음 후보) — 다듬기
+
+- [ ] **AtCoder/CF/Programmers Accepted 사전 확인** — LeetCode 패턴 적용. 풀이 업로드 전 통과 여부 확인 → 없으면 dialog override
+- [ ] **회고 prompt 사용자 customize** — settings에서 회고 형식 자유 입력 (간결/상세 등)
+- [ ] **풀이 검색** — stats 모달 안 search box (100개 이상 누적 시 필요)
 - [ ] **백준 BOJ (Phase 5)** — 보류 (서버 종료 이슈). 향후 재개 시 진행
 
 - [ ] **풀이 통계 native sync** — better-sqlite3 또는 localStorage → gist 백업 (디바이스 간 sync)
