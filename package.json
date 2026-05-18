@@ -1,6 +1,6 @@
 {
   "name": "iq-leetbuddy",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "LeetCode 풀이를 한국어로 번역하고 AI 회고를 생성해 GitHub에 자동 업로드하는 데스크톱 에이전트",
   "main": "dist/main/index.js",
   "scripts": {
