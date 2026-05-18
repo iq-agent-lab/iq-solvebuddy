@@ -6,6 +6,7 @@ import { resetTranslatorClient } from '../services/translator';
 import { resetAnnotatorClient } from '../services/annotator';
 import { resetGithubClient, createRepoIfMissing, verifyConnection, fetchIndexFromGithub, updateRetrospective, migrateLegacyLeetCodeFolders } from '../services/github';
 import { fetchRecentAcceptedSubmission, hasAcceptedSubmission } from '../services/leetcode';
+import { fetchAtcoderSubmission } from '../services/atcoderSubmission';
 import { Problem } from '../types';
 import { renderMarkdown } from '../services/markdown';
 import { getSettingsView, saveSettings, isKeychainAvailable, AppSettings } from './settings';
@@ -50,6 +51,9 @@ function makeStreamForwarder(channel: string, sender: WebContents) {
 let leetcodeOpener: ((url?: string) => void) | null = null;
 let leetcodeUrlGetter: (() => string | null) | null = null;
 let pullCurrentUrl: (() => void) | null = null;
+let atcoderOpener: ((url?: string) => void) | null = null;
+let atcoderUrlGetter: (() => string | null) | null = null;
+let pullCurrentAtcoderUrl: (() => void) | null = null;
 let shortcutGetter: (() => string | null) | null = null;
 
 export function setLeetCodeOpener(fn: (url?: string) => void) {
@@ -62,6 +66,18 @@ export function setLeetCodeUrlGetter(fn: () => string | null) {
 
 export function setPullCurrentLeetCodeUrl(fn: () => void) {
   pullCurrentUrl = fn;
+}
+
+export function setAtcoderOpener(fn: (url?: string) => void) {
+  atcoderOpener = fn;
+}
+
+export function setAtcoderUrlGetter(fn: () => string | null) {
+  atcoderUrlGetter = fn;
+}
+
+export function setPullCurrentAtcoderUrl(fn: () => void) {
+  pullCurrentAtcoderUrl = fn;
 }
 
 export function setShortcutGetter(fn: () => string | null) {
@@ -164,13 +180,17 @@ export function registerIpcHandlers() {
     return { ok: true };
   });
 
+  // ── AtCoder embedded 윈도우 열기 (v1.4+ submission 자동 fetch 위해) ──
+  ipcMain.handle('open-atcoder', async (_event, url?: string) => {
+    if (atcoderOpener) atcoderOpener(url);
+    return { ok: true };
+  });
+
   // ── 다른 플랫폼은 기본 브라우저에서 열기 ──
-  // LeetCode만 임베드 윈도우 (submission 자동 fetch 위해 persistent cookies 필요).
-  // Programmers/AtCoder/Codeforces는 submission 자동 fetch 미지원 → 외부 브라우저로 충분.
-  // v1.x+에서 각 플랫폼 submission 자동 fetch 추가 시 임베드 윈도우 도입 검토.
+  // LeetCode/AtCoder는 임베드 윈도우 (submission 자동 fetch — persistent cookies 필요).
+  // Programmers/Codeforces는 submission 자동 fetch 아직 미지원 → 외부 브라우저.
   const PLATFORM_URLS: Record<string, string> = {
     Programmers: 'https://school.programmers.co.kr/learn/challenges',
-    AtCoder: 'https://atcoder.jp/home',
     Codeforces: 'https://codeforces.com/problemset',
   };
   ipcMain.handle('open-platform-site', async (_event, platform: string) => {
@@ -199,10 +219,41 @@ export function registerIpcHandlers() {
     return { ok: false };
   });
 
-  // ── 임베드 LeetCode 세션으로 이 문제의 최근 Accepted submission 자동 가져오기 ──
-  ipcMain.handle('fetch-submission', async (_event, titleSlug: string) => {
+  // ── 임베드 AtCoder 윈도우 URL 조회 ──
+  ipcMain.handle('get-atcoder-url', async () => {
+    const url = atcoderUrlGetter ? atcoderUrlGetter() : null;
+    return { ok: !!url, url };
+  });
+
+  // ── 임베드 AtCoder 윈도우 URL을 메인 input으로 끌어오기 ──
+  ipcMain.handle('pull-atcoder-url', async () => {
+    if (pullCurrentAtcoderUrl) {
+      pullCurrentAtcoderUrl();
+      return { ok: true };
+    }
+    return { ok: false };
+  });
+
+  // ── 플랫폼별 submission 자동 가져오기 (LeetCode/AtCoder) ──
+  // payload 형태로 일반화 — 플랫폼별 다른 식별자 (titleSlug vs contestId+taskId) 수용
+  ipcMain.handle('fetch-submission', async (_event, payload: unknown) => {
     try {
-      const result = await fetchRecentAcceptedSubmission(titleSlug);
+      // 하위 호환: 옛 호출 형태 fetchSubmission(titleSlug: string)도 수용
+      if (typeof payload === 'string') {
+        const result = await fetchRecentAcceptedSubmission(payload);
+        return { ok: true, ...result };
+      }
+      const p = payload as
+        | { platform: 'LeetCode'; titleSlug: string }
+        | { platform: 'AtCoder'; contestId: string; taskId: string };
+      if (p.platform === 'AtCoder') {
+        const result = await fetchAtcoderSubmission(p.contestId, p.taskId);
+        return { ok: true, ...result };
+      }
+      // default: LeetCode
+      const result = await fetchRecentAcceptedSubmission(
+        (p as { titleSlug: string }).titleSlug
+      );
       return { ok: true, ...result };
     } catch (err) {
       return { ok: false, error: toErrorMessage(err) };

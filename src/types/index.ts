@@ -186,11 +186,17 @@ export interface IqApi {
   openLeetCode: (url?: string) => Promise<{ ok: boolean }>;
   getLeetCodeUrl: () => Promise<{ ok: boolean; url: string | null }>;
   pullLeetCodeUrl: () => Promise<{ ok: boolean }>;
+  openAtcoder: (url?: string) => Promise<{ ok: boolean }>;
+  getAtcoderUrl: () => Promise<{ ok: boolean; url: string | null }>;
+  pullAtcoderUrl: () => Promise<{ ok: boolean }>;
   openPlatformSite: (
-    platform: 'Programmers' | 'AtCoder' | 'Codeforces'
+    platform: 'Programmers' | 'Codeforces'
   ) => Promise<{ ok: boolean; error?: string }>;
   fetchSubmission: (
-    titleSlug: string
+    payload:
+      | string  // legacy: LeetCode titleSlug
+      | { platform: 'LeetCode'; titleSlug: string }
+      | { platform: 'AtCoder'; contestId: string; taskId: string }
   ) => Promise<IpcResult<{ code: string; langSlug: string; langName: string }>>;
   hasAcceptedSubmission: (
     titleSlug: string

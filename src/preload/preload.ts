@@ -17,10 +17,17 @@ contextBridge.exposeInMainWorld('api', {
   openLeetCode: (url?: string) => ipcRenderer.invoke('open-leetcode', url),
   getLeetCodeUrl: () => ipcRenderer.invoke('get-leetcode-url'),
   pullLeetCodeUrl: () => ipcRenderer.invoke('pull-leetcode-url'),
-  openPlatformSite: (platform: 'Programmers' | 'AtCoder' | 'Codeforces') =>
+  openAtcoder: (url?: string) => ipcRenderer.invoke('open-atcoder', url),
+  getAtcoderUrl: () => ipcRenderer.invoke('get-atcoder-url'),
+  pullAtcoderUrl: () => ipcRenderer.invoke('pull-atcoder-url'),
+  openPlatformSite: (platform: 'Programmers' | 'Codeforces') =>
     ipcRenderer.invoke('open-platform-site', platform),
-  fetchSubmission: (titleSlug: string) =>
-    ipcRenderer.invoke('fetch-submission', titleSlug),
+  fetchSubmission: (
+    payload:
+      | string  // legacy: titleSlug (LeetCode)
+      | { platform: 'LeetCode'; titleSlug: string }
+      | { platform: 'AtCoder'; contestId: string; taskId: string }
+  ) => ipcRenderer.invoke('fetch-submission', payload),
   hasAcceptedSubmission: (titleSlug: string) =>
     ipcRenderer.invoke('has-accepted-submission', titleSlug),
   confirmUploadWithoutAccepted: (titleSlug: string) =>
