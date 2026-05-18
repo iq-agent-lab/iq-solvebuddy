@@ -8,6 +8,7 @@ import { resetGithubClient, createRepoIfMissing, verifyConnection, fetchIndexFro
 import { fetchRecentAcceptedSubmission, hasAcceptedSubmission } from '../services/leetcode';
 import { fetchAtcoderSubmission } from '../services/atcoderSubmission';
 import { fetchCodeforcesSubmission } from '../services/codeforcesSubmission';
+import { fetchProgrammersSubmissionFromWindow } from '../services/programmersSubmission';
 import { Problem } from '../types';
 import { renderMarkdown } from '../services/markdown';
 import { getSettingsView, saveSettings, isKeychainAvailable, AppSettings } from './settings';
@@ -58,6 +59,10 @@ let pullCurrentAtcoderUrl: (() => void) | null = null;
 let codeforcesOpener: ((url?: string) => void) | null = null;
 let codeforcesUrlGetter: (() => string | null) | null = null;
 let pullCurrentCodeforcesUrl: (() => void) | null = null;
+let programmersOpener: ((url?: string) => void) | null = null;
+let programmersUrlGetter: (() => string | null) | null = null;
+let pullCurrentProgrammersUrl: (() => void) | null = null;
+let programmersWindowGetter: (() => BrowserWindow | null) | null = null;
 let shortcutGetter: (() => string | null) | null = null;
 
 export function setLeetCodeOpener(fn: (url?: string) => void) {
@@ -94,6 +99,23 @@ export function setCodeforcesUrlGetter(fn: () => string | null) {
 
 export function setPullCurrentCodeforcesUrl(fn: () => void) {
   pullCurrentCodeforcesUrl = fn;
+}
+
+export function setProgrammersOpener(fn: (url?: string) => void) {
+  programmersOpener = fn;
+}
+
+export function setProgrammersUrlGetter(fn: () => string | null) {
+  programmersUrlGetter = fn;
+}
+
+export function setPullCurrentProgrammersUrl(fn: () => void) {
+  pullCurrentProgrammersUrl = fn;
+}
+
+// programmersSubmission이 임베드 윈도우에 webContents.executeJavaScript 하기 위해
+export function setProgrammersWindowGetter(fn: () => BrowserWindow | null) {
+  programmersWindowGetter = fn;
 }
 
 export function setShortcutGetter(fn: () => string | null) {
@@ -209,21 +231,17 @@ export function registerIpcHandlers() {
     return { ok: true };
   });
 
-  // ── 다른 플랫폼은 기본 브라우저에서 열기 ──
-  // LeetCode/AtCoder/Codeforces는 임베드 윈도우 (submission 자동 fetch — persistent cookies 필요).
-  // Programmers만 자동 fetch 아직 미지원 → 외부 브라우저 (Phase 2.5에서 추가 예정).
-  const PLATFORM_URLS: Record<string, string> = {
-    Programmers: 'https://school.programmers.co.kr/learn/challenges',
-  };
-  ipcMain.handle('open-platform-site', async (_event, platform: string) => {
-    const url = PLATFORM_URLS[platform];
-    if (!url) return { ok: false, error: `지원하지 않는 플랫폼: ${platform}` };
-    try {
-      await shell.openExternal(url);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: toErrorMessage(err) };
-    }
+  // ── Programmers embedded 윈도우 열기 (v1.6+ submission 자동 fetch + Lv 3+ 로그인 필요 문제) ──
+  // partition 'persist:programmers' — programmers.ts의 fetchProgrammersHtml과 cookies 공유
+  ipcMain.handle('open-programmers', async (_event, url?: string) => {
+    if (programmersOpener) programmersOpener(url);
+    return { ok: true };
+  });
+
+  // ── 4개 플랫폼 모두 임베드 — 외부 브라우저 fallback 채널은 noop ──
+  // (legacy 호환을 위해 채널은 유지하되 사용처 없음)
+  ipcMain.handle('open-platform-site', async () => {
+    return { ok: false, error: '모든 플랫폼이 v1.6부터 임베드 윈도우로 동작합니다' };
   });
 
   // ── 임베드 LeetCode 윈도우의 현재 URL 조회 (메인 input '가져오기' 보조 버튼용) ──
@@ -271,6 +289,21 @@ export function registerIpcHandlers() {
     return { ok: false };
   });
 
+  // ── 임베드 Programmers 윈도우 URL 조회 ──
+  ipcMain.handle('get-programmers-url', async () => {
+    const url = programmersUrlGetter ? programmersUrlGetter() : null;
+    return { ok: !!url, url };
+  });
+
+  // ── 임베드 Programmers 윈도우 URL을 메인 input으로 끌어오기 ──
+  ipcMain.handle('pull-programmers-url', async () => {
+    if (pullCurrentProgrammersUrl) {
+      pullCurrentProgrammersUrl();
+      return { ok: true };
+    }
+    return { ok: false };
+  });
+
   // ── 플랫폼별 submission 자동 가져오기 (LeetCode/AtCoder) ──
   // payload 형태로 일반화 — 플랫폼별 다른 식별자 (titleSlug vs contestId+taskId) 수용
   ipcMain.handle('fetch-submission', async (_event, payload: unknown) => {
@@ -283,13 +316,19 @@ export function registerIpcHandlers() {
       const p = payload as
         | { platform: 'LeetCode'; titleSlug: string }
         | { platform: 'AtCoder'; contestId: string; taskId: string }
-        | { platform: 'Codeforces'; contestId: string; index: string };
+        | { platform: 'Codeforces'; contestId: string; index: string }
+        | { platform: 'Programmers'; lessonId: string };
       if (p.platform === 'AtCoder') {
         const result = await fetchAtcoderSubmission(p.contestId, p.taskId);
         return { ok: true, ...result };
       }
       if (p.platform === 'Codeforces') {
         const result = await fetchCodeforcesSubmission(p.contestId, p.index);
+        return { ok: true, ...result };
+      }
+      if (p.platform === 'Programmers') {
+        const win = programmersWindowGetter ? programmersWindowGetter() : null;
+        const result = await fetchProgrammersSubmissionFromWindow(win, p.lessonId);
         return { ok: true, ...result };
       }
       // default: LeetCode

@@ -23,14 +23,16 @@ contextBridge.exposeInMainWorld('api', {
   openCodeforces: (url?: string) => ipcRenderer.invoke('open-codeforces', url),
   getCodeforcesUrl: () => ipcRenderer.invoke('get-codeforces-url'),
   pullCodeforcesUrl: () => ipcRenderer.invoke('pull-codeforces-url'),
-  openPlatformSite: (platform: 'Programmers') =>
-    ipcRenderer.invoke('open-platform-site', platform),
+  openProgrammers: (url?: string) => ipcRenderer.invoke('open-programmers', url),
+  getProgrammersUrl: () => ipcRenderer.invoke('get-programmers-url'),
+  pullProgrammersUrl: () => ipcRenderer.invoke('pull-programmers-url'),
   fetchSubmission: (
     payload:
       | string  // legacy: titleSlug (LeetCode)
       | { platform: 'LeetCode'; titleSlug: string }
       | { platform: 'AtCoder'; contestId: string; taskId: string }
       | { platform: 'Codeforces'; contestId: string; index: string }
+      | { platform: 'Programmers'; lessonId: string }
   ) => ipcRenderer.invoke('fetch-submission', payload),
   hasAcceptedSubmission: (titleSlug: string) =>
     ipcRenderer.invoke('has-accepted-submission', titleSlug),

@@ -25,6 +25,10 @@ import {
   setCodeforcesOpener,
   setCodeforcesUrlGetter,
   setPullCurrentCodeforcesUrl,
+  setProgrammersOpener,
+  setProgrammersUrlGetter,
+  setPullCurrentProgrammersUrl,
+  setProgrammersWindowGetter,
   setShortcutGetter,
 } from './ipc';
 import { decryptProcessEnvSecrets, migrateSecretsIfNeeded } from './settings';
@@ -52,6 +56,7 @@ let mainWindow: BrowserWindow | null = null;
 let leetcodeWindow: BrowserWindow | null = null;
 let atcoderWindow: BrowserWindow | null = null;
 let codeforcesWindow: BrowserWindow | null = null;
+let programmersWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let activeShortcut: string | null = null;
@@ -71,6 +76,11 @@ function isCodeforcesUrl(url: string): boolean {
   return /^https?:\/\/(?:www\.)?codeforces\.com/i.test(url);
 }
 
+// Programmers URL 판별
+function isProgrammersUrl(url: string): boolean {
+  return /^https?:\/\/(?:[a-z0-9-]+\.)?programmers\.co\.kr/i.test(url);
+}
+
 // 외부/embedded 라우팅
 function routeUrl(url: string) {
   if (isLeetCodeUrl(url)) {
@@ -79,6 +89,8 @@ function routeUrl(url: string) {
     openAtcoderWindow(url);
   } else if (isCodeforcesUrl(url)) {
     openCodeforcesWindow(url);
+  } else if (isProgrammersUrl(url)) {
+    openProgrammersWindow(url);
   } else if (url.startsWith('http://') || url.startsWith('https://')) {
     shell.openExternal(url);
   }
@@ -679,6 +691,178 @@ function getCurrentCodeforcesUrl(): string | null {
   return isCodeforcesUrl(url) ? url : null;
 }
 
+// ─── Programmers embedded 윈도우 ──────────────────────────────
+// AtCoder/CF 패턴 평행. partition: 'persist:programmers'
+// 핵심 차이: submission 자동 fetch가 이 윈도우의 ace editor 값을 직접 추출 (programmersSubmission.ts)
+
+const PG_PULL_SENTINEL = 'IQ_SOLVEBUDDY_PG_PULL::';
+
+const PG_INJECT_SCRIPT = `
+(() => {
+  if (window.__IQ_SOLVEBUDDY_PG_INJECTED__) return;
+  window.__IQ_SOLVEBUDDY_PG_INJECTED__ = true;
+
+  const SENTINEL = ${JSON.stringify(PG_PULL_SENTINEL)};
+  const BTN_ID = '__iq_solvebuddy_pg_pull_btn__';
+
+  function isLessonPage() {
+    return /\\/learn\\/courses\\/\\d+\\/lessons\\/\\d+/.test(location.pathname);
+  }
+
+  function ensureBtn() {
+    let btn = document.getElementById(BTN_ID);
+    if (!isLessonPage()) {
+      if (btn) btn.remove();
+      return;
+    }
+    if (btn) return;
+    if (!document.body) return;
+
+    btn = document.createElement('button');
+    btn.id = BTN_ID;
+    btn.type = 'button';
+    btn.textContent = '→ solvebuddy로 가져오기';
+    btn.style.cssText = [
+      'position:fixed',
+      'bottom:24px',
+      'right:24px',
+      'z-index:2147483647',
+      'padding:10px 18px',
+      'background:linear-gradient(135deg,#cc785c,#b06547)',
+      'color:#fff',
+      'border:none',
+      'border-radius:999px',
+      'font-size:13px',
+      'font-weight:600',
+      'font-family:-apple-system,system-ui,BlinkMacSystemFont,sans-serif',
+      'letter-spacing:-0.01em',
+      'cursor:pointer',
+      'box-shadow:0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)',
+      'transition:transform 0.15s ease,box-shadow 0.15s ease',
+      'user-select:none',
+    ].join(';');
+    btn.addEventListener('mouseenter', () => {
+      btn.style.transform = 'translateY(-1px)';
+      btn.style.boxShadow = '0 8px 24px rgba(204,120,92,0.55),inset 0 0 0 1px rgba(255,255,255,0.18)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.transform = 'translateY(0)';
+      btn.style.boxShadow = '0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)';
+    });
+    btn.addEventListener('click', () => {
+      console.log(SENTINEL + location.href);
+      btn.textContent = '✓ solvebuddy로 보냄';
+      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
+    });
+    document.body.appendChild(btn);
+  }
+
+  ensureBtn();
+  setInterval(ensureBtn, 1200);
+})();
+`;
+
+function injectPgPullButton(win: BrowserWindow) {
+  win.webContents.executeJavaScript(PG_INJECT_SCRIPT).catch(() => {
+    // silent
+  });
+}
+
+function openProgrammersWindow(url: string = 'https://school.programmers.co.kr/learn/challenges') {
+  if (programmersWindow && !programmersWindow.isDestroyed()) {
+    programmersWindow.loadURL(url);
+    programmersWindow.show();
+    programmersWindow.focus();
+    if (process.platform === 'darwin') app.focus({ steal: true });
+    return;
+  }
+
+  // 'persist:programmers' — programmers.ts의 fetchProgrammersHtml과 cookies 공유
+  // 한 번 로그인하면 Lv 3+ 문제 fetch도 같은 cookies로 가능
+  const pgSession = session.fromPartition('persist:programmers');
+
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  programmersWindow = new BrowserWindow({
+    width: Math.min(1400, Math.floor(sw * 0.7)),
+    height: Math.min(1100, Math.floor(sh * 0.92)),
+    title: '프로그래머스',
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      session: pgSession,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  programmersWindow.loadURL(url);
+
+  programmersWindow.on('closed', () => {
+    programmersWindow = null;
+  });
+
+  programmersWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+    if (isProgrammersUrl(openUrl)) {
+      programmersWindow?.loadURL(openUrl);
+    } else {
+      shell.openExternal(openUrl);
+    }
+    return { action: 'deny' };
+  });
+
+  programmersWindow.webContents.on('did-finish-load', () => {
+    if (programmersWindow) injectPgPullButton(programmersWindow);
+  });
+  programmersWindow.webContents.on('did-navigate-in-page', () => {
+    if (programmersWindow) injectPgPullButton(programmersWindow);
+  });
+
+  programmersWindow.webContents.on(
+    'console-message',
+    (_event, _level, message) => {
+      if (typeof message !== 'string') return;
+      if (!message.startsWith(PG_PULL_SENTINEL)) return;
+      const url = message.slice(PG_PULL_SENTINEL.length);
+      pullPgToMainWindow(url);
+    }
+  );
+}
+
+function pullPgToMainWindow(url: string) {
+  if (!url || !isProgrammersUrl(url)) return;
+  if (!mainWindow) {
+    createWindow();
+    const win = mainWindow as BrowserWindow | null;
+    win?.once('ready-to-show', () => {
+      win.show();
+      win.webContents.once('did-finish-load', () => {
+        win.webContents.send('pull-problem', url);
+      });
+      showAndFocus();
+    });
+    return;
+  }
+  showAndFocus();
+  mainWindow.webContents.send('pull-problem', url);
+}
+
+function pullCurrentProgrammersUrl() {
+  if (!programmersWindow || programmersWindow.isDestroyed()) return;
+  const url = programmersWindow.webContents.getURL();
+  pullPgToMainWindow(url);
+}
+
+function getCurrentProgrammersUrl(): string | null {
+  if (!programmersWindow || programmersWindow.isDestroyed()) return null;
+  const url = programmersWindow.webContents.getURL();
+  return isProgrammersUrl(url) ? url : null;
+}
+
+// programmersSubmission이 임베드 윈도우 접근 — ipc setter로 노출
+function getProgrammersWindow(): BrowserWindow | null {
+  if (!programmersWindow || programmersWindow.isDestroyed()) return null;
+  return programmersWindow;
+}
+
 // ─── 메인 윈도우 ──────────────────────────────
 function createWindow() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
@@ -936,6 +1120,10 @@ app.whenReady().then(async () => {
   setCodeforcesOpener(openCodeforcesWindow);
   setCodeforcesUrlGetter(getCurrentCodeforcesUrl);
   setPullCurrentCodeforcesUrl(pullCurrentCodeforcesUrl);
+  setProgrammersOpener(openProgrammersWindow);
+  setProgrammersUrlGetter(getCurrentProgrammersUrl);
+  setPullCurrentProgrammersUrl(pullCurrentProgrammersUrl);
+  setProgrammersWindowGetter(getProgrammersWindow);
   setShortcutGetter(() => activeShortcut);
 
   createAppMenu();
