@@ -1,13 +1,14 @@
 // 파이프라인 오케스트레이션
 
 import { fetchProblem, resolveTitleSlugByFrontendId } from './leetcode';
+import { fetchProgrammersProblem } from './programmers';
 import { translateProblem, StreamCallback } from './translator';
 import { annotateCode } from './annotator';
 import { uploadSolution, createRepoIfMissing } from './github';
 import { renderMarkdown } from './markdown';
 import { readTranslationCache, writeTranslationCache } from './cache';
 import { parseProblemInput } from '../util/language';
-import { FetchProblemResult, UploadResult, LeetCodeProblem } from '../types';
+import { FetchProblemResult, UploadResult, Problem } from '../types';
 
 export type ProgressFn = (stage: string) => void;
 
@@ -18,6 +19,32 @@ export async function fetchAndTranslate(
 ): Promise<FetchProblemResult> {
   const parsed = parseProblemInput(input);
 
+  // ─── Programmers 분기 ────────────────────────────────
+  // lessonId 가 cache key — slug은 한글이라 파일명 안전성 위해 lessonId 사용
+  if (parsed.platform === 'Programmers') {
+    if (!parsed.lessonId) {
+      throw new Error('프로그래머스 URL에서 lessonId를 찾지 못했어요 — programmers.co.kr/learn/courses/.../lessons/{id} 형식의 URL을 입력해주세요');
+    }
+
+    const cached = await readTranslationCache('Programmers', parsed.lessonId);
+    if (cached) {
+      onProgress?.('cached');
+      return cached;
+    }
+
+    onProgress?.('fetching');
+    const problem = await fetchProgrammersProblem(parsed.lessonId);
+
+    onProgress?.('translating');
+    const translation = await translateProblem(problem, onStream);
+    const translationHtml = await renderMarkdown(translation);
+
+    const result = { problem, translation, translationHtml };
+    await writeTranslationCache('Programmers', parsed.lessonId, result);
+    return result;
+  }
+
+  // ─── LeetCode 분기 ────────────────────────────────
   // 숫자 입력 (예: "1") — frontendId → slug 해결 후 진행
   let titleSlug = parsed.titleSlug;
   if (parsed.isNumericId && parsed.frontendId) {
@@ -30,7 +57,7 @@ export async function fetchAndTranslate(
   }
 
   // 캐시 hit 시 LLM 호출 skip — chip 재클릭 / 같은 문제 다른 언어로 풀 때 즉시 로드
-  const cached = await readTranslationCache(titleSlug);
+  const cached = await readTranslationCache('LeetCode', titleSlug);
   if (cached) {
     onProgress?.('cached');
     return cached;
@@ -45,13 +72,13 @@ export async function fetchAndTranslate(
 
   const result = { problem, translation, translationHtml };
   // 캐시 쓰기 실패해도 흐름엔 영향 X — fire-and-forget OK이지만 await로 순서 보장
-  await writeTranslationCache(titleSlug, result);
+  await writeTranslationCache('LeetCode', titleSlug, result);
   return result;
 }
 
 export async function annotateAndUpload(
   args: {
-    problem: LeetCodeProblem;
+    problem: Problem;
     translation: string;
     code: string;
     language: string;

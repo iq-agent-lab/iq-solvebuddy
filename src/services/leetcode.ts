@@ -99,7 +99,8 @@ export async function fetchProblem(titleSlug: string): Promise<LeetCodeProblem> 
       `LeetCode에서 "${titleSlug}" 문제를 찾을 수 없어요 — URL 또는 문제 이름을 확인해주세요`
     );
   }
-  return data.question as LeetCodeProblem;
+  // v1.0+ platform discriminator 명시 — Problem union type narrowing 안정성
+  return { platform: 'LeetCode', ...(data.question as LeetCodeProblem) };
 }
 
 // ─── submission 자동 가져오기 (Round D) ─────────────────────────

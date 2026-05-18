@@ -1,7 +1,9 @@
-// Claude API로 LeetCode 문제 HTML을 깔끔한 한국어 마크다운으로 번역
+// Claude API로 문제 HTML을 깔끔한 한국어 마크다운으로 변환
+// LeetCode (영어 원문): 번역
+// Programmers (한국어 원문): 정리만 (번역 X, 마크다운 형식 정돈)
 
 import Anthropic from '@anthropic-ai/sdk';
-import { LeetCodeProblem } from '../types';
+import { LeetCodeProblem, ProgrammersProblem, Problem } from '../types';
 import { withRetry } from '../util/language';
 
 let _client: Anthropic | null = null;
@@ -83,16 +85,66 @@ function extractText(content: Array<{ type: string }>): string {
     .trim();
 }
 
+// Programmers — 한국어 원문이라 *번역*이 아닌 *정리* 모드.
+// 원문 한국어 그대로 보존 + HTML 태그를 깔끔한 마크다운으로 변환 + 메타 헤더 추가.
+function buildProgrammersPrompt(problem: ProgrammersProblem): string {
+  return `너는 프로그래머스 문제 본문을 정리하는 도우미야. 다음 한국어 원문 HTML을 깔끔한 마크다운으로 정리해줘.
+
+[메타]
+- 문제 번호: ${problem.lessonId}
+- 제목: ${problem.title}
+- 난이도: ${problem.difficulty}
+- 원문: ${problem.url}
+
+[원문 HTML]
+${problem.content}
+
+다음 형식으로만 출력해줘 (코드 블록이나 추가 설명 없이 바로 마크다운 본문):
+
+# ${problem.title}
+
+> **${problem.difficulty}** · [원문](${problem.url})
+
+## 문제
+
+(원문 본문을 한국어 그대로 보존 + HTML 태그는 마크다운으로 변환. 번역하지 말 것 — 한국어 원문 유지)
+
+## 입출력 예시
+
+(원문에 있는 테이블이나 예시를 마크다운 표 또는 코드블록으로)
+
+## 제한사항
+
+(원문에 있으면 불릿으로)
+
+---
+
+규칙:
+1. **번역 금지** — 원문이 한국어이므로 그대로 유지. 영어/일본어 등으로 옮기지 말 것
+2. HTML 태그(<p>, <code>, <table> 등)만 마크다운으로 변환
+3. 변수명/함수명/자료구조명은 원문 그대로
+4. 수식은 \`$...$\` 또는 코드 백틱
+5. **이미지 보존**: \`<img src="...">\`가 있으면 \`![설명](URL)\` 마크다운으로. URL 변경/단축 금지
+6. SQL 문제도 동일 — 본문 + 예시 테이블 그대로 마크다운 변환
+7. 마크다운 외 다른 설명/주석 추가 금지`;
+}
+
 export async function translateProblem(
-  problem: LeetCodeProblem,
+  problem: Problem,
   onStream?: StreamCallback
 ): Promise<string> {
+  // platform 분기 — LeetCode는 번역, Programmers는 정리
+  const prompt =
+    problem.platform === 'Programmers'
+      ? buildProgrammersPrompt(problem as ProgrammersProblem)
+      : buildPrompt(problem as LeetCodeProblem);
+
   return withRetry(async () => {
     if (onStream) {
       const stream = client().messages.stream({
         model: MODEL,
         max_tokens: 4000,
-        messages: [{ role: 'user', content: buildPrompt(problem) }],
+        messages: [{ role: 'user', content: prompt }],
       });
       stream.on('text', (_delta, snapshot) => {
         onStream(snapshot);
@@ -103,11 +155,11 @@ export async function translateProblem(
       return text;
     }
 
-    // non-streaming fallback (호환 유지)
+    // non-streaming fallback
     const response = await client().messages.create({
       model: MODEL,
       max_tokens: 4000,
-      messages: [{ role: 'user', content: buildPrompt(problem) }],
+      messages: [{ role: 'user', content: prompt }],
     });
     const text = extractText(response.content as Array<{ type: string }>);
     if (!text) throw new Error('번역 결과가 비어있습니다');

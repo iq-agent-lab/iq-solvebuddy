@@ -10,7 +10,7 @@
 
 import { app, BrowserWindow } from 'electron';
 
-const RELEASES_API = 'https://api.github.com/repos/iq-agent-lab/iq-leetbuddy/releases/latest';
+const RELEASES_API = 'https://api.github.com/repos/iq-agent-lab/iq-solvebuddy/releases/latest';
 
 interface ReleaseInfo {
   tag: string;
@@ -43,7 +43,7 @@ export async function checkForUpdates(mainWindow: BrowserWindow | null): Promise
     const res = await fetch(RELEASES_API, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'iq-leetbuddy',
+        'User-Agent': 'iq-solvebuddy',
       },
     });
     if (!res.ok) return; // 네트워크 오류 / rate limit 등은 silent
@@ -60,7 +60,7 @@ export async function checkForUpdates(mainWindow: BrowserWindow | null): Promise
 
     const info: ReleaseInfo = {
       tag: latestTag,
-      url: data.html_url || 'https://github.com/iq-agent-lab/iq-leetbuddy/releases/latest',
+      url: data.html_url || 'https://github.com/iq-agent-lab/iq-solvebuddy/releases/latest',
     };
 
     // renderer가 ready된 후 전송 (윈도우가 hidden일 수 있어 listener만 등록)

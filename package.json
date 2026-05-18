@@ -1,7 +1,7 @@
 {
   "name": "iq-leetbuddy",
-  "version": "0.3.4",
-  "description": "LeetCode 풀이를 한국어로 번역하고 AI 회고를 생성해 GitHub에 자동 업로드하는 데스크톱 에이전트",
+  "version": "1.0.0",
+  "description": "LeetCode/프로그래머스 풀이를 한국어로 정리하고 AI 회고를 생성해 GitHub에 자동 업로드하는 데스크톱 에이전트",
   "main": "dist/main/index.js",
   "scripts": {
     "build": "tsc && node scripts/copy-assets.js",
@@ -30,6 +30,7 @@
     "@anthropic-ai/sdk": "^0.95.0",
     "@highlightjs/cdn-assets": "^11.10.0",
     "@octokit/rest": "^20.0.0",
+    "cheerio": "^1.2.0",
     "codemirror": "^5.65.21",
     "dotenv": "^16.4.5",
     "marked": "^12.0.0"
@@ -42,7 +43,7 @@
   },
   "build": {
     "appId": "com.iq-agent-lab.leetbuddy",
-    "productName": "iq-leetbuddy",
+    "productName": "iq-solvebuddy",
     "copyright": "Copyright © 2025 IQ",
     "directories": {
       "output": "release",
@@ -99,7 +100,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "iq-leetbuddy",
+      "shortcutName": "iq-solvebuddy",
       "artifactName": "${productName}-${version}-windows-x64.${ext}"
     },
     "linux": {
@@ -108,7 +109,7 @@
       ],
       "icon": "build/icon.png",
       "category": "Development",
-      "synopsis": "LeetCode 풀이 자동 정리 에이전트",
+      "synopsis": "LeetCode/프로그래머스 풀이 자동 정리 에이전트",
       "artifactName": "${productName}-${version}-linux-x86_64.${ext}"
     },
     "publish": null

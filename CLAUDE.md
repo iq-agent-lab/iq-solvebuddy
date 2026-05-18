@@ -1,8 +1,8 @@
-# CLAUDE.md — iq-leetbuddy 작업 컨텍스트
+# CLAUDE.md — iq-solvebuddy 작업 컨텍스트
 
 > 외부 사용자용은 README. 이 파일은 **Claude 세션 작업 컨텍스트** (어떻게 작업·왜 이 결정·다음 어디로).
 >
-> **마지막 업데이트**: 2026-05-12
+> **마지막 업데이트**: 2026-05-18 (v1.0.0)
 
 **기호**: ✦ 시그니처 / ✓ 유지 / ❌ 하지 말 것
 
@@ -10,12 +10,14 @@
 
 ## 프로젝트 한눈에
 
-LeetCode 풀이를 **한국어로 번역**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 단일 commit으로 자동 정리**하는 **Electron 데스크톱 에이전트**.
+**LeetCode + 프로그래머스** 풀이를 **한국어로 정리**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 단일 commit으로 자동 정리**하는 **Electron 데스크톱 에이전트**.
 
 **iq-agent-lab 행성 중 하나** — 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
-- **로컬**: `/Users/ibm514/iq-lab/iq-agent-lab/iq-leetbuddy`
-- **GitHub**: https://github.com/iq-agent-lab/iq-leetbuddy
+> v0.x~v0.9는 `iq-leetbuddy` 이름. v1.0에 `iq-solvebuddy`로 rename (GitHub repo / .app productName / 메뉴/트레이/창 title 모두). **단 사용자 데이터 호환을 위해 유지**: ① userData 폴더명(`app.setName('iq-leetbuddy')` 명시) ② localStorage key prefix(`iq-leetbuddy:*`) ③ GitHub 풀이 레포 marker(`<!-- iq-leetbuddy:LeetCode:* -->`). 이 3개는 invisible이라 사용자 노출 X, 변경 시 모든 v0.x 사용자 데이터 손실.
+
+- **로컬**: `/Users/ibm514/iq-lab/iq-agent-lab/iq-leetbuddy` (폴더명은 그대로 — git rename 안 함, GitHub remote URL만 iq-solvebuddy로)
+- **GitHub**: https://github.com/iq-agent-lab/iq-solvebuddy
 
 Stack: Electron + TypeScript + Anthropic SDK (streaming) + Octokit (git data API) + marked + highlight.js. Renderer는 vanilla JS.
 
@@ -99,7 +101,11 @@ npm run release            # version patch + push + GitHub Actions
 | 멀티 플랫폼 path = 플랫폼별 폴더 | 유지 | v0.8 이하: `NNNN-slug/`(root 바로 아래). v0.9부터: `LeetCode/NNNN-slug/`. Programmers/AtCoder/Codeforces/BOJ는 enum/marker 예약. 자동 마이그레이션 도구로 기존 사용자도 단일 commit으로 전환 |
 | 멀티 플랫폼 인덱스 = `<details>` 섹션 | 유지 | 플랫폼별 marker (`<!-- iq-leetbuddy:LeetCode:start -->` 등). LeetCode default 펼침, 나머지는 접힘. legacy marker(`iq-leetbuddy:problems`)는 parseExistingIndex가 자동으로 LeetCode platform으로 변환 — backward compat |
 | 자동 마이그레이션 = recursive tree mv | 유지 | recursive tree get → legacy 패턴(`^\d+-[a-z0-9-]+/`) 필터 → createTree에 (sha:null 삭제 + LeetCode/ 새 path 추가) + 새 README → 단일 commit. 사용자 명시 클릭 후만 실행 (stats 모달 버튼). 이미 마이그레이션이면 noop |
-| 이름 = `iq-leetbuddy` 유지 (v0.9까지) | 임시 | 멀티 플랫폼 되면 정확하지 않지만 brand 보존 + GitHub repo rename 비용 큼. Phase 2(프로그래머스) 추가 후 `iq-solvebuddy` 등 범용 이름으로 변경 검토 |
+| 이름 = `iq-solvebuddy` (v1.0+) | 유지 | v0.x~v0.9는 `iq-leetbuddy`. v1.0 출시(프로그래머스 추가)와 함께 rename. **변경**: GitHub repo URL / .app productName / 창 title / 트레이 메뉴 / Releases API URL / README/CLAUDE.md. **유지** (사용자 데이터 손실 방지): userData 폴더명 (`app.setName('iq-leetbuddy')` 명시 — invisible) / localStorage key prefix (`iq-leetbuddy:draft/theme/...`) / GitHub 풀이 레포 marker (`<!-- iq-leetbuddy:LeetCode:* -->`). package.json의 `name`도 `iq-leetbuddy` 유지 (npm-level, fallback for setName 안정성) |
+| Programmers = 정리 모드 (번역 X) | 유지 | 본문이 이미 한국어. translator.ts에 `buildProgrammersPrompt` 분기 — "번역 금지" 명시 + HTML 태그만 마크다운 변환. Problem union discriminator (`platform === 'Programmers'`)로 dispatch. SQL 문제도 동일 흐름 |
+| Programmers fetch = HTML scraping (cheerio) | 유지 | 공식 API 없음. `school.programmers.co.kr/learn/courses/30/lessons/{lessonId}` HTML fetch + cheerio로 selector 시도. 다중 selector fallback (사이트 업데이트 대응). Lv 3+ 로그인 필요는 친절 에러 — Phase 2.5에서 `persist:programmers` 임베드 활용 예정 |
+| Programmers path = `Programmers/{lessonId}-{slug}/` | 유지 | LeetCode와 달리 frontendId 없으니 lessonId 사용. slug는 한국어 보존 (cheerio slugify가 한글+dash). titleSlug가 한국어라도 git path는 UTF-8 안전. 인덱스 entry의 problemId = lessonId |
+| 캐시 key = platform prefix | 유지 | LeetCode와 Programmers 같은 식별자라도 분리. 파일명: LeetCode는 `{slug}.json` (legacy 호환), Programmers는 `programmers-{lessonId}.json`. 함수 시그니처: `readTranslationCache(platform, key)` |
 | 풀이 레포 root README 자동 인덱스 | 유지 | uploadSolution이 매 풀이마다 root README marker 영역만 update. `<!-- iq-leetbuddy:problems:start/end -->` 사이만 touch — 사용자 자유 텍스트(위/아래) 보존. 같은 slug는 languages 합치고 savedAt 갱신. 실패 silent (풀이 commit 우선) |
 | 풀이 통계 localStorage (not SQLite) | 유지 | `better-sqlite3` native module은 electron rebuild 필요 + 플랫폼별 까다로움. localStorage JSON 배열로 단순화 — 오프라인 안전, 디바이스 sync 안 됨. 가치 90% 보존. 📊 모달에서 요약/난이도/언어/월별/최근 표시 |
 | 자동 업데이트 = polling (not electron-updater) | 유지 | electron-updater는 macOS unsigned 앱에서 squirrel.mac cert 요구로 fail. cert 비용 + 복잡도 큼. 대신 GitHub Releases API polling + footer pill로 알림만 — 다운로드는 기존 zip 흐름. dev 모드는 `app.isPackaged`로 skip |
@@ -188,10 +194,11 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 | `src/main/ipc.ts` | IPC 핸들러, `makeStreamForwarder` (throttle + renderPromise 체인) |
 | `src/main/settings.ts` | `.env` 읽기/쓰기, `MANAGED_KEYS`, secret-skip 로직 |
 | `src/services/leetcode.ts` | LeetCode GraphQL fetch (`questionData`) |
-| `src/services/translator.ts` | Claude translate, streaming 옵션 |
-| `src/services/annotator.ts` | Claude annotate, streaming 옵션 |
-| `src/services/pipeline.ts` | `fetchAndTranslate` + `annotateAndUpload` 오케스트레이션 |
-| `src/services/github.ts` | Octokit git data API, `fileNeedsUpdate`, `verifyConnection` |
+| `src/services/programmers.ts` | 프로그래머스 HTML scraping (cheerio, v1.0+) |
+| `src/services/translator.ts` | Claude translate(LeetCode) / organize(Programmers) — platform dispatch, streaming |
+| `src/services/annotator.ts` | Claude annotate (회고 생성), streaming. Problem union 수용 |
+| `src/services/pipeline.ts` | `fetchAndTranslate` + `annotateAndUpload` 오케스트레이션 (platform 분기) |
+| `src/services/github.ts` | Octokit git data API, `fileNeedsUpdate`, `verifyConnection`, platform-aware path |
 | `src/services/markdown.ts` | marked v12 dynamic import (ESM 우회) |
 | `src/util/language.ts` | `langToExt`, `langToFolder`, `parseProblemInput`, `withRetry` |
 | `src/preload/preload.ts` | contextBridge — IPC 채널 노출만 |
@@ -212,8 +219,8 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 
 ### iq-agent-lab
 - Claude를 활용한 daily workflow tool 모음 (행성 메타포)
-- iq-leetbuddy = 학습 자산화 행성
-- 본 사용자 main use case: 주 5~7 LeetCode 풀이 + 한국어 회고 누적
+- iq-solvebuddy = 학습 자산화 행성 (v0.x~v0.9 시절 이름: iq-leetbuddy)
+- 본 사용자 main use case: 주 5~7 LeetCode + 프로그래머스 풀이 + 한국어 회고 누적
 
 ### 작업 스타일
 - 깊이 있는 분석 + 명확한 결정 + 트레이드오프 명시
@@ -237,12 +244,18 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 
 ## 다음 단계 후보
 
-### 진행 가능
-- **번역 결과 캐시** — `userData/cache/translations/{slug}.json`. 같은 titleSlug 재fetch 시 LLM skip
-- **renderer.js → TypeScript** (큰 사이클) — main만 TS, renderer만 JS 비대칭
-- **leetcode.cn 지원** — GRAPHQL_URL을 cn URL이면 cn 엔드포인트로
+### 진행 가능 (Phase 2.5 — v1.1 후보)
+- **프로그래머스 임베드 세션** — Lv 3+ 로그인 필요 문제 접근. `persist:programmers` 파티션 + 임베드 LeetCode와 같은 패턴
+- **프로그래머스 submission 자동 fetch** — 사용자 마지막 통과 코드 자동 가져오기
+- **도구 이름 변경** — 사용자가 GitHub repo rename 후 README badge / Releases URL 정합성. 후보: `iq-solvebuddy` (1순위) / `iq-codebuddy` (2순위)
+- **Programmers 인덱스 column 다르게** — `lessonId`는 의미가 약함. 별도 column? 또는 슬러그를 강조?
+- **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip (LeetCode + Programmers 동일)
 - **에러 메시지 한국어화** — Octokit 원본 에러 메시지 wrapping (현재 부분만)
-- **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip
+
+### Phase 3-5 (장기)
+- **AtCoder** — HTML scraping, 영어/일본어 statement
+- **Codeforces** — public API + statement scraping, rating 기반 표시
+- **백준 (BOJ)** — HTML + solved.ac 난이도
 
 보류 / 안 함 결정은 **결정 매트릭스** 참조.
 
