@@ -22,6 +22,9 @@ import {
   setAtcoderOpener,
   setAtcoderUrlGetter,
   setPullCurrentAtcoderUrl,
+  setCodeforcesOpener,
+  setCodeforcesUrlGetter,
+  setPullCurrentCodeforcesUrl,
   setShortcutGetter,
 } from './ipc';
 import { decryptProcessEnvSecrets, migrateSecretsIfNeeded } from './settings';
@@ -48,6 +51,7 @@ function loadEnv() {
 let mainWindow: BrowserWindow | null = null;
 let leetcodeWindow: BrowserWindow | null = null;
 let atcoderWindow: BrowserWindow | null = null;
+let codeforcesWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let activeShortcut: string | null = null;
@@ -62,12 +66,19 @@ function isAtcoderUrl(url: string): boolean {
   return /^https?:\/\/(?:www\.)?atcoder\.jp/i.test(url);
 }
 
+// Codeforces URL 판별
+function isCodeforcesUrl(url: string): boolean {
+  return /^https?:\/\/(?:www\.)?codeforces\.com/i.test(url);
+}
+
 // 외부/embedded 라우팅
 function routeUrl(url: string) {
   if (isLeetCodeUrl(url)) {
     openLeetCodeWindow(url);
   } else if (isAtcoderUrl(url)) {
     openAtcoderWindow(url);
+  } else if (isCodeforcesUrl(url)) {
+    openCodeforcesWindow(url);
   } else if (url.startsWith('http://') || url.startsWith('https://')) {
     shell.openExternal(url);
   }
@@ -502,6 +513,172 @@ function getCurrentAtcoderUrl(): string | null {
   return isAtcoderUrl(url) ? url : null;
 }
 
+// ─── Codeforces embedded 윈도우 ──────────────────────────────
+// AtCoder/LeetCode 패턴 평행. 단 partition은 `persist:codeforces` — browserFetch와 공유.
+// 같은 partition이라 임베드에서 한 번 로그인하면 problem fetch도 같은 cookies 활용 (Cloudflare 통과 + 로그인 상태)
+
+const CF_PULL_SENTINEL = 'IQ_SOLVEBUDDY_CF_PULL::';
+
+const CF_INJECT_SCRIPT = `
+(() => {
+  if (window.__IQ_SOLVEBUDDY_CF_INJECTED__) return;
+  window.__IQ_SOLVEBUDDY_CF_INJECTED__ = true;
+
+  const SENTINEL = ${JSON.stringify(CF_PULL_SENTINEL)};
+  const BTN_ID = '__iq_solvebuddy_cf_pull_btn__';
+
+  function isProblemPage() {
+    // /contest/{N}/problem/{X} 또는 /problemset/problem/{N}/{X}
+    return /\\/(?:contest\\/\\d+\\/problem\\/[A-Z]\\d*|problemset\\/problem\\/\\d+\\/[A-Z]\\d*)/i.test(location.pathname);
+  }
+
+  function ensureBtn() {
+    let btn = document.getElementById(BTN_ID);
+    if (!isProblemPage()) {
+      if (btn) btn.remove();
+      return;
+    }
+    if (btn) return;
+    if (!document.body) return;
+
+    btn = document.createElement('button');
+    btn.id = BTN_ID;
+    btn.type = 'button';
+    btn.textContent = '→ solvebuddy로 가져오기';
+    btn.style.cssText = [
+      'position:fixed',
+      'bottom:24px',
+      'right:24px',
+      'z-index:2147483647',
+      'padding:10px 18px',
+      'background:linear-gradient(135deg,#cc785c,#b06547)',
+      'color:#fff',
+      'border:none',
+      'border-radius:999px',
+      'font-size:13px',
+      'font-weight:600',
+      'font-family:-apple-system,system-ui,BlinkMacSystemFont,sans-serif',
+      'letter-spacing:-0.01em',
+      'cursor:pointer',
+      'box-shadow:0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)',
+      'transition:transform 0.15s ease,box-shadow 0.15s ease',
+      'user-select:none',
+    ].join(';');
+    btn.addEventListener('mouseenter', () => {
+      btn.style.transform = 'translateY(-1px)';
+      btn.style.boxShadow = '0 8px 24px rgba(204,120,92,0.55),inset 0 0 0 1px rgba(255,255,255,0.18)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.transform = 'translateY(0)';
+      btn.style.boxShadow = '0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)';
+    });
+    btn.addEventListener('click', () => {
+      console.log(SENTINEL + location.href);
+      btn.textContent = '✓ solvebuddy로 보냄';
+      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
+    });
+    document.body.appendChild(btn);
+  }
+
+  ensureBtn();
+  setInterval(ensureBtn, 1200);
+})();
+`;
+
+function injectCfPullButton(win: BrowserWindow) {
+  win.webContents.executeJavaScript(CF_INJECT_SCRIPT).catch(() => {
+    // silent
+  });
+}
+
+function openCodeforcesWindow(url: string = 'https://codeforces.com/') {
+  if (codeforcesWindow && !codeforcesWindow.isDestroyed()) {
+    codeforcesWindow.loadURL(url);
+    codeforcesWindow.show();
+    codeforcesWindow.focus();
+    if (process.platform === 'darwin') app.focus({ steal: true });
+    return;
+  }
+
+  // 'persist:codeforces' — browserFetch와 같은 partition (cookies 공유)
+  const cfSession = session.fromPartition('persist:codeforces');
+
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  codeforcesWindow = new BrowserWindow({
+    width: Math.min(1400, Math.floor(sw * 0.7)),
+    height: Math.min(1100, Math.floor(sh * 0.92)),
+    title: 'Codeforces',
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      session: cfSession,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  codeforcesWindow.loadURL(url);
+
+  codeforcesWindow.on('closed', () => {
+    codeforcesWindow = null;
+  });
+
+  codeforcesWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
+    if (isCodeforcesUrl(openUrl)) {
+      codeforcesWindow?.loadURL(openUrl);
+    } else {
+      shell.openExternal(openUrl);
+    }
+    return { action: 'deny' };
+  });
+
+  codeforcesWindow.webContents.on('did-finish-load', () => {
+    if (codeforcesWindow) injectCfPullButton(codeforcesWindow);
+  });
+  codeforcesWindow.webContents.on('did-navigate-in-page', () => {
+    if (codeforcesWindow) injectCfPullButton(codeforcesWindow);
+  });
+
+  codeforcesWindow.webContents.on(
+    'console-message',
+    (_event, _level, message) => {
+      if (typeof message !== 'string') return;
+      if (!message.startsWith(CF_PULL_SENTINEL)) return;
+      const url = message.slice(CF_PULL_SENTINEL.length);
+      pullCfToMainWindow(url);
+    }
+  );
+}
+
+function pullCfToMainWindow(url: string) {
+  if (!url || !isCodeforcesUrl(url)) return;
+  if (!mainWindow) {
+    createWindow();
+    const win = mainWindow as BrowserWindow | null;
+    win?.once('ready-to-show', () => {
+      win.show();
+      win.webContents.once('did-finish-load', () => {
+        win.webContents.send('pull-problem', url);
+      });
+      showAndFocus();
+    });
+    return;
+  }
+  showAndFocus();
+  mainWindow.webContents.send('pull-problem', url);
+}
+
+function pullCurrentCodeforcesUrl() {
+  if (!codeforcesWindow || codeforcesWindow.isDestroyed()) return;
+  const url = codeforcesWindow.webContents.getURL();
+  pullCfToMainWindow(url);
+}
+
+function getCurrentCodeforcesUrl(): string | null {
+  if (!codeforcesWindow || codeforcesWindow.isDestroyed()) return null;
+  const url = codeforcesWindow.webContents.getURL();
+  return isCodeforcesUrl(url) ? url : null;
+}
+
 // ─── 메인 윈도우 ──────────────────────────────
 function createWindow() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
@@ -756,6 +933,9 @@ app.whenReady().then(async () => {
   setAtcoderOpener(openAtcoderWindow);
   setAtcoderUrlGetter(getCurrentAtcoderUrl);
   setPullCurrentAtcoderUrl(pullCurrentAtcoderUrl);
+  setCodeforcesOpener(openCodeforcesWindow);
+  setCodeforcesUrlGetter(getCurrentCodeforcesUrl);
+  setPullCurrentCodeforcesUrl(pullCurrentCodeforcesUrl);
   setShortcutGetter(() => activeShortcut);
 
   createAppMenu();

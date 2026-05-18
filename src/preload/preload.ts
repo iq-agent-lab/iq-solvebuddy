@@ -20,13 +20,17 @@ contextBridge.exposeInMainWorld('api', {
   openAtcoder: (url?: string) => ipcRenderer.invoke('open-atcoder', url),
   getAtcoderUrl: () => ipcRenderer.invoke('get-atcoder-url'),
   pullAtcoderUrl: () => ipcRenderer.invoke('pull-atcoder-url'),
-  openPlatformSite: (platform: 'Programmers' | 'Codeforces') =>
+  openCodeforces: (url?: string) => ipcRenderer.invoke('open-codeforces', url),
+  getCodeforcesUrl: () => ipcRenderer.invoke('get-codeforces-url'),
+  pullCodeforcesUrl: () => ipcRenderer.invoke('pull-codeforces-url'),
+  openPlatformSite: (platform: 'Programmers') =>
     ipcRenderer.invoke('open-platform-site', platform),
   fetchSubmission: (
     payload:
       | string  // legacy: titleSlug (LeetCode)
       | { platform: 'LeetCode'; titleSlug: string }
       | { platform: 'AtCoder'; contestId: string; taskId: string }
+      | { platform: 'Codeforces'; contestId: string; index: string }
   ) => ipcRenderer.invoke('fetch-submission', payload),
   hasAcceptedSubmission: (titleSlug: string) =>
     ipcRenderer.invoke('has-accepted-submission', titleSlug),

@@ -7,6 +7,7 @@ import { resetAnnotatorClient } from '../services/annotator';
 import { resetGithubClient, createRepoIfMissing, verifyConnection, fetchIndexFromGithub, updateRetrospective, migrateLegacyLeetCodeFolders } from '../services/github';
 import { fetchRecentAcceptedSubmission, hasAcceptedSubmission } from '../services/leetcode';
 import { fetchAtcoderSubmission } from '../services/atcoderSubmission';
+import { fetchCodeforcesSubmission } from '../services/codeforcesSubmission';
 import { Problem } from '../types';
 import { renderMarkdown } from '../services/markdown';
 import { getSettingsView, saveSettings, isKeychainAvailable, AppSettings } from './settings';
@@ -54,6 +55,9 @@ let pullCurrentUrl: (() => void) | null = null;
 let atcoderOpener: ((url?: string) => void) | null = null;
 let atcoderUrlGetter: (() => string | null) | null = null;
 let pullCurrentAtcoderUrl: (() => void) | null = null;
+let codeforcesOpener: ((url?: string) => void) | null = null;
+let codeforcesUrlGetter: (() => string | null) | null = null;
+let pullCurrentCodeforcesUrl: (() => void) | null = null;
 let shortcutGetter: (() => string | null) | null = null;
 
 export function setLeetCodeOpener(fn: (url?: string) => void) {
@@ -78,6 +82,18 @@ export function setAtcoderUrlGetter(fn: () => string | null) {
 
 export function setPullCurrentAtcoderUrl(fn: () => void) {
   pullCurrentAtcoderUrl = fn;
+}
+
+export function setCodeforcesOpener(fn: (url?: string) => void) {
+  codeforcesOpener = fn;
+}
+
+export function setCodeforcesUrlGetter(fn: () => string | null) {
+  codeforcesUrlGetter = fn;
+}
+
+export function setPullCurrentCodeforcesUrl(fn: () => void) {
+  pullCurrentCodeforcesUrl = fn;
 }
 
 export function setShortcutGetter(fn: () => string | null) {
@@ -186,12 +202,18 @@ export function registerIpcHandlers() {
     return { ok: true };
   });
 
+  // ── Codeforces embedded 윈도우 열기 (v1.5+ submission 자동 fetch 위해) ──
+  // partition 'persist:codeforces' — browserFetch와 cookies 공유 (한 번 로그인하면 양쪽 모두 활용)
+  ipcMain.handle('open-codeforces', async (_event, url?: string) => {
+    if (codeforcesOpener) codeforcesOpener(url);
+    return { ok: true };
+  });
+
   // ── 다른 플랫폼은 기본 브라우저에서 열기 ──
-  // LeetCode/AtCoder는 임베드 윈도우 (submission 자동 fetch — persistent cookies 필요).
-  // Programmers/Codeforces는 submission 자동 fetch 아직 미지원 → 외부 브라우저.
+  // LeetCode/AtCoder/Codeforces는 임베드 윈도우 (submission 자동 fetch — persistent cookies 필요).
+  // Programmers만 자동 fetch 아직 미지원 → 외부 브라우저 (Phase 2.5에서 추가 예정).
   const PLATFORM_URLS: Record<string, string> = {
     Programmers: 'https://school.programmers.co.kr/learn/challenges',
-    Codeforces: 'https://codeforces.com/problemset',
   };
   ipcMain.handle('open-platform-site', async (_event, platform: string) => {
     const url = PLATFORM_URLS[platform];
@@ -234,6 +256,21 @@ export function registerIpcHandlers() {
     return { ok: false };
   });
 
+  // ── 임베드 Codeforces 윈도우 URL 조회 ──
+  ipcMain.handle('get-codeforces-url', async () => {
+    const url = codeforcesUrlGetter ? codeforcesUrlGetter() : null;
+    return { ok: !!url, url };
+  });
+
+  // ── 임베드 Codeforces 윈도우 URL을 메인 input으로 끌어오기 ──
+  ipcMain.handle('pull-codeforces-url', async () => {
+    if (pullCurrentCodeforcesUrl) {
+      pullCurrentCodeforcesUrl();
+      return { ok: true };
+    }
+    return { ok: false };
+  });
+
   // ── 플랫폼별 submission 자동 가져오기 (LeetCode/AtCoder) ──
   // payload 형태로 일반화 — 플랫폼별 다른 식별자 (titleSlug vs contestId+taskId) 수용
   ipcMain.handle('fetch-submission', async (_event, payload: unknown) => {
@@ -245,9 +282,14 @@ export function registerIpcHandlers() {
       }
       const p = payload as
         | { platform: 'LeetCode'; titleSlug: string }
-        | { platform: 'AtCoder'; contestId: string; taskId: string };
+        | { platform: 'AtCoder'; contestId: string; taskId: string }
+        | { platform: 'Codeforces'; contestId: string; index: string };
       if (p.platform === 'AtCoder') {
         const result = await fetchAtcoderSubmission(p.contestId, p.taskId);
+        return { ok: true, ...result };
+      }
+      if (p.platform === 'Codeforces') {
+        const result = await fetchCodeforcesSubmission(p.contestId, p.index);
         return { ok: true, ...result };
       }
       // default: LeetCode

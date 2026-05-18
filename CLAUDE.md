@@ -2,7 +2,7 @@
 
 > 외부 사용자용은 README. 이 파일은 **Claude 세션 작업 컨텍스트** (어떻게 작업·왜 이 결정·다음 어디로).
 >
-> **마지막 업데이트**: 2026-05-19 (v1.4.0)
+> **마지막 업데이트**: 2026-05-19 (v1.5.0)
 
 **기호**: ✦ 시그니처 / ✓ 유지 / ❌ 하지 말 것
 
@@ -120,7 +120,10 @@ npm run release            # version patch + push + GitHub Actions
 | AtCoder 임베드 = LeetCode와 같은 패턴 | 유지 | INJECT_SCRIPT (chip 버튼 + console-message sentinel) + persist 파티션 + URL pull/push 모두 LeetCode와 평행 구조. 다만 lang hint 없음 (AtCoder는 starter code 없어서). sentinel 분리(`IQ_SOLVEBUDDY_AC_PULL::`)로 LeetCode와 안 섞임 |
 | AtCoder submission auto fetch = HTML scraping | 유지 | AtCoder는 공식 GraphQL/REST API 없음 → `/submissions/me?f.Task={taskId}&f.Status=AC` HTML scraping. 임베드 세션 cookies(`REVEL_SESSION` 등) 활용. 가장 최근 AC submission ID 추출 → detail 페이지에서 `<pre id="submission-code">` 본문 추출. AtCoder lang 이름(`C++ 23 (gcc 12.2)` 등)을 우리 langSlug로 substring 매칭 |
 | fetch-submission IPC = payload 형태 generic | 유지 | v1.3까지 `fetchSubmission(titleSlug: string)`이었지만 AtCoder는 contestId+taskId 두 식별자 필요 → payload union으로 변경 (`{platform:'LeetCode', titleSlug}` 또는 `{platform:'AtCoder', contestId, taskId}`). string 인자 형태도 backward-compat (LeetCode로 라우팅) |
-| pull-embed-btn = LeetCode 우선, AtCoder fallback | 유지 | 메인 input의 "↩ 임베드에서" 버튼은 둘 다 떠있을 때 LeetCode 우선. 어느 쪽도 없으면 "임베드 윈도우가 열려있지 않아요" 친절 에러. 둘 다 동시에 띄우는 케이스는 드물어 단순화 OK |
+| pull-embed-btn = LeetCode 우선, AtCoder → Codeforces fallback | 유지 | 메인 input의 "↩ 임베드에서" 버튼은 3개 임베드 윈도우 중 떠있는 것 우선순위로 끌어옴. 셋 다 없으면 친절 에러. 동시에 띄우는 케이스 드물어 우선순위 단순화 OK |
+| Codeforces 임베드 = persist:codeforces 공유 (browserFetch와) | 유지 | browserFetch가 Cloudflare 우회용으로 이미 `persist:codeforces` 사용 중. 임베드 윈도우도 같은 partition → cookies 공유. **장점**: 사용자가 임베드에서 한 번 로그인하면 problem fetch도 같은 cookies로 작동 (Cloudflare 챌린지 패스 + 로그인 상태 모두 활용). 단일 source of truth |
+| Codeforces submission auto fetch = HTML scraping (browserFetch) | 유지 | CF API(`/api/user.status`)는 메타데이터만 — 코드 본문은 페이지 scraping. `/contest/{N}/my` HTML(로그인 필요)에서 `data-submission-id` + `verdict-accepted` 필터링 → `/contest/{N}/submission/{id}` detail 페이지의 `<pre id="program-source-text">` 코드 추출. browserFetch가 Cloudflare 통과 + cookies 적용. `<ol><li>` 라인 wrapping 대응 (li.text() join '\n') |
+| CF login 감지 = "Enter" 링크 패턴 | 유지 | CF는 미로그인 시 응답이 login redirect가 아닌 페이지 헤더에 "Enter | Register" 링크 표시. `/href="\/enter[^"]*"\s+[^>]*>\s*Enter\s*</a>/` 정규식으로 감지. 다른 페이지 구조 시 false negative 있을 수 있지만 헤더 패턴은 안정적 |
 | starter code 메시지 = 플랫폼별 분기 | 유지 | LeetCode 하드코딩 메시지가 AtCoder/CF/Programmers에서 어색. `noSnippetMessage(problem)` 헬퍼가 platform별 메시지 반환. AtCoder/CF는 "시작 코드 제공 안 함" 명시, Programmers는 비로그인 케이스 안내. starter-block 자체는 hide 안 함 — lang select가 그 안에 있어 항상 필요 |
 | Codeforces tag 추출 = `.tag-box` 통합 순회 | 유지 | rating(`*1500`)과 algorithmic tags(`greedy`, `dp` 등)가 같은 `.tag-box` selector. 한 번 순회하며 별표 정규식으로 rating 분리, 나머지를 topicTags로. 길이 가드(< 40자) + alpha 필터로 noise 제거. tag가 prompt에 포함되어 번역에 도움 |
 | AtCoder difficulty rating = kenkoooo.com API | 유지 | AtCoder 페이지엔 점수만 있음. AtCoder Problems(`kenkoooo.com/atcoder/resources/problem-models.json`)가 IRT 기반 difficulty 제공. **30MB+ JSON** (gzip ~5-10MB) — 24h TTL disk 캐시 + 메모리 캐시. 부팅 시 background prewarm으로 첫 fetch 대기 시간 제거. 실패 silent (점수만 표시되어도 무해). 표기: "300점 · 난이도 1234" / 음수 rating은 "≤0" |
@@ -220,6 +223,7 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 | `src/services/codeforces.ts` | Codeforces HTML scraping (cheerio, v1.2+). `.problem-statement` 전체 + rating/tags 분리 |
 | `src/services/atcoderModels.ts` | AtCoder difficulty rating 캐시 (kenkoooo.com API, v1.3+). 24h TTL + 메모리 캐시 + 부팅 prewarm |
 | `src/services/atcoderSubmission.ts` | AtCoder submission 자동 fetch (v1.4+). 임베드 세션 cookies + HTML scraping. lang 매핑 |
+| `src/services/codeforcesSubmission.ts` | Codeforces submission 자동 fetch (v1.5+). browserFetch + 같은 partition cookies. `<ol><li>` 라인 wrapping 대응 |
 | `src/services/browserFetch.ts` | hidden BrowserWindow 기반 HTML fetch (v1.3.1+). Cloudflare 우회용. partition별 window pool 재사용 |
 | `src/services/translator.ts` | Claude translate(LeetCode/AtCoder/Codeforces) / organize(Programmers) — platform dispatch, streaming |
 | `src/services/annotator.ts` | Claude annotate (회고 생성), streaming. Problem union 수용 |
@@ -270,13 +274,12 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 
 ## 다음 단계 후보
 
-### 진행 가능 (v1.5 후보)
-- **Codeforces submission 자동 fetch (Phase 4.5)** — `persist:codeforces` 임베드 + submission API 또는 scraping
-- **프로그래머스 임베드 + submission (Phase 2.5)** — `persist:programmers` 임베드. Lv 3+ 로그인 필요 문제도 가져오기
-- **백준 BOJ (Phase 5)** — 보류 (서버 종료 — 사용자 요청). 향후 재개 시 진행
-- **AtCoder Accepted 사전 확인** — LeetCode 패턴 적용. 풀이 업로드 전 AC 있는지 확인 → 없으면 dialog override
+### 진행 가능 (v1.6 후보) — Phase 2.5
+- **프로그래머스 임베드 + submission (Phase 2.5)** — `persist:programmers` 임베드. Lv 3+ 로그인 필요 문제 + 풀이 마지막 통과 코드 자동 가져오기. 마지막 미진행 플랫폼
+- **AtCoder/Codeforces Accepted 사전 확인** — LeetCode 패턴 적용. 풀이 업로드 전 AC 있는지 확인 → 없으면 dialog override
 - **history 카드 클릭 시 cache 사용** — 캐시 hit 시 즉시 step-2 final, streaming skip
 - **에러 메시지 한국어화** — Octokit 원본 에러 메시지 wrapping (현재 부분만)
+- **백준 BOJ (Phase 5)** — 보류 (서버 종료 — 사용자 요청). 향후 재개 시 진행
 
 ### 장기
 - 풀이 레포 RAG 검색 — "DP 문제 중 비슷한 것" 같은 자연어 검색
