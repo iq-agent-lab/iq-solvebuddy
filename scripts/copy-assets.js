@@ -96,6 +96,19 @@ copyFile(`${cmRoot}/addon/edit/closebrackets.js`, 'dist/vendor/codemirror/addon/
 copyFile(`${cmRoot}/addon/display/placeholder.js`, 'dist/vendor/codemirror/addon/placeholder.js');
 copyFile(`${cmRoot}/addon/selection/active-line.js`, 'dist/vendor/codemirror/addon/active-line.js');
 
+// v1.12+ addon: 검색 (Cmd+F) + 코드 fold (큰 블록 접기) + jump-to-line
+copyFile(`${cmRoot}/addon/dialog/dialog.js`, 'dist/vendor/codemirror/addon/dialog.js');
+copyFile(`${cmRoot}/addon/dialog/dialog.css`, 'dist/vendor/codemirror/addon/dialog.css');
+copyFile(`${cmRoot}/addon/search/searchcursor.js`, 'dist/vendor/codemirror/addon/searchcursor.js');
+copyFile(`${cmRoot}/addon/search/search.js`, 'dist/vendor/codemirror/addon/search.js');
+copyFile(`${cmRoot}/addon/search/jump-to-line.js`, 'dist/vendor/codemirror/addon/jump-to-line.js');
+copyFile(`${cmRoot}/addon/fold/foldcode.js`, 'dist/vendor/codemirror/addon/foldcode.js');
+copyFile(`${cmRoot}/addon/fold/foldgutter.js`, 'dist/vendor/codemirror/addon/foldgutter.js');
+copyFile(`${cmRoot}/addon/fold/foldgutter.css`, 'dist/vendor/codemirror/addon/foldgutter.css');
+copyFile(`${cmRoot}/addon/fold/brace-fold.js`, 'dist/vendor/codemirror/addon/brace-fold.js');
+copyFile(`${cmRoot}/addon/fold/indent-fold.js`, 'dist/vendor/codemirror/addon/indent-fold.js');
+copyFile(`${cmRoot}/addon/fold/comment-fold.js`, 'dist/vendor/codemirror/addon/comment-fold.js');
+
 // ─── KaTeX (수식 렌더링) ──────────────────────────────────────────
 // marked-katex-extension가 main 프로세스에서 HTML로 변환 (KaTeX HTML+CSS span 구조).
 // renderer는 katex.min.css와 폰트(woff2)만 있으면 즉시 렌더링.

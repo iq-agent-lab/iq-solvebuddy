@@ -112,10 +112,33 @@ function initCodeEditor(): void {
     matchBrackets: true,
     autoCloseBrackets: true,
     styleActiveLine: true,
-    lineWrapping: false,
+    lineWrapping: getEditorLineWrap(),  // v1.12+ settings 토글로 ON/OFF
+    // v1.12+ 코드 fold — gutter에 ▶/▼ 아이콘으로 함수/클래스 접기
+    foldGutter: true,
+    gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
+    // Cmd-F (search) / Cmd-G (next) / Cmd-Shift-G (prev) / Cmd-Alt-F (replace)
+    // / Alt-G (jump-to-line) — search + jump-to-line addon이 자동 등록
     placeholder: '// 여기에 통과한 코드를 붙여넣어주세요 (또는 위 버튼으로 자동 가져오기)',
   });
   cmEditor.on('change', scheduleDraftSave);
+}
+
+// line wrap 사용자 선호 — localStorage 저장 (default OFF)
+const LINE_WRAP_KEY = 'iq-leetbuddy:editor-line-wrap';
+function getEditorLineWrap(): boolean {
+  try {
+    return localStorage.getItem(LINE_WRAP_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+function setEditorLineWrap(v: boolean): void {
+  try {
+    localStorage.setItem(LINE_WRAP_KEY, String(v));
+  } catch {
+    // silent
+  }
+  if (cmEditor) cmEditor.setOption('lineWrapping', v);
 }
 
 function setEditorLang(slug: string | null): void {
@@ -836,6 +859,86 @@ async function handleBackfill(): Promise<void> {
     }
   } catch (e: any) {
     setStatus(`동기화 실패: ${e?.message || String(e)}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+// ─── Gist sync (v1.12+) — 디바이스 간 풀이 통계 동기화 ───────────
+// 흐름: pull (gist에서 가져옴 + 병합) → push (병합 결과 다시 push)
+// 한 번 클릭으로 양방향 sync 완료. gistId는 localStorage에 저장 (다음 호출 시 직접 조회)
+const GIST_ID_KEY = 'iq-leetbuddy:stats-gist-id';
+
+function getStoredGistId(): string | null {
+  try {
+    return localStorage.getItem(GIST_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredGistId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(GIST_ID_KEY, id);
+    else localStorage.removeItem(GIST_ID_KEY);
+  } catch {
+    // silent
+  }
+}
+
+async function handleGistSync(): Promise<void> {
+  const btn = $btn('gist-sync-btn');
+  const originalText = btn.textContent || '☁ Gist 백업';
+  btn.disabled = true;
+  btn.textContent = '동기화 중...';
+  setStatus('Gist 동기화 중...', 'busy');
+
+  try {
+    const storedGistId = getStoredGistId();
+
+    // 1) pull — gist에서 가져옴 (없으면 신규)
+    const pulled = await window.api.statsPullGist({ gistId: storedGistId });
+    if (!pulled.ok) throw new Error(pulled.error);
+
+    // 2) merge — savedAt 기준 newest wins
+    const local = readSolutions();
+    const remote: SolutionRecord[] = pulled.solutionsJson
+      ? (JSON.parse(pulled.solutionsJson) as SolutionRecord[])
+      : [];
+    const map = new Map<string, SolutionRecord>();
+    for (const s of [...local, ...remote]) {
+      const key = `${s.platform || 'LeetCode'}:${s.titleSlug}:${s.language}`;
+      const existing = map.get(key);
+      if (!existing || s.savedAt > existing.savedAt) {
+        map.set(key, s);
+      }
+    }
+    const merged = Array.from(map.values()).sort((a, b) => b.savedAt - a.savedAt);
+    localStorage.setItem(SOLUTIONS_KEY, JSON.stringify(merged));
+    renderStatsDashboard();
+
+    // 3) push merged 결과
+    const pushed = await window.api.statsPushGist({
+      json: JSON.stringify(merged),
+      gistId: pulled.gistId || storedGistId,
+    });
+    if (!pushed.ok) throw new Error(pushed.error);
+
+    // gistId 저장 (다음 sync에 활용)
+    setStoredGistId(pushed.gistId);
+
+    const localCount = local.length;
+    const remoteCount = remote.length;
+    const mergedCount = merged.length;
+    const added = mergedCount - localCount;
+    if (added > 0) {
+      setStatus(`✓ Gist sync 완료 — 원격 ${remoteCount}개 중 ${added}개 새로 가져옴 (총 ${mergedCount}개)`, 'ok');
+    } else {
+      setStatus(`✓ Gist sync 완료 — 이미 동기화됨 (총 ${mergedCount}개)`, 'ok');
+    }
+  } catch (e: any) {
+    setStatus(`Gist sync 실패: ${e?.message || String(e)}`, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = originalText;
@@ -1688,6 +1791,7 @@ async function openSettings(): Promise<void> {
   $input('setting-github-branch').value = settings.GITHUB_BRANCH || '';
   $input('setting-auto-create-repo').checked = !!settings.GITHUB_AUTO_CREATE_REPO;
   $input('setting-accepted-check').checked = getAcceptedCheck();
+  $input('setting-editor-line-wrap').checked = getEditorLineWrap();
 
   // 저장 상태 시각적 표시
   setSectionStatus('anthropic-status', settings.hasAnthropicKey);
@@ -1749,6 +1853,7 @@ async function saveSettings(): Promise<void> {
     if (!result.ok) throw new Error(result.error);
     // localStorage 토글도 같이 저장 (.env 아닌 settings)
     setAcceptedCheck($input('setting-accepted-check').checked);
+    setEditorLineWrap($input('setting-editor-line-wrap').checked);
     setStatus('설정 저장됨', 'ok');
     closeSettings();
     checkConfig();
@@ -2166,6 +2271,10 @@ $btn('backfill-btn').addEventListener('click', (e: Event) => {
 $btn('migrate-btn').addEventListener('click', (e: Event) => {
   e.stopPropagation();
   handleMigrate();
+});
+$btn('gist-sync-btn').addEventListener('click', (e: Event) => {
+  e.stopPropagation();
+  handleGistSync();
 });
 $('stats-modal').addEventListener('click', (e: Event) => {
   const target = e.target as HTMLElement | null;

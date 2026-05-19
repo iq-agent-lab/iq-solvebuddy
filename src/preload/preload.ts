@@ -52,6 +52,10 @@ contextBridge.exposeInMainWorld('api', {
   backfillFromGithub: () => ipcRenderer.invoke('backfill-from-github'),
   migrateLegacyFolders: () => ipcRenderer.invoke('migrate-legacy-folders'),
   clearTranslationCache: () => ipcRenderer.invoke('clear-translation-cache'),
+  statsPushGist: (payload: { json: string; gistId: string | null }) =>
+    ipcRenderer.invoke('stats-push-gist', payload),
+  statsPullGist: (payload: { gistId: string | null }) =>
+    ipcRenderer.invoke('stats-pull-gist', payload),
   createRepo: () => ipcRenderer.invoke('create-repo'),
   verifyGithub: () => ipcRenderer.invoke('verify-github'),
 

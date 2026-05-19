@@ -36,6 +36,7 @@ import { checkForUpdates } from './update';
 import { prewarmAtcoderModels } from '../services/atcoderModels';
 import { closeAllBrowserFetchWindows } from '../services/browserFetch';
 import { setProgrammersWindowGetterForLevel } from '../services/programmers';
+import { EmbedController } from './embedWindow';
 
 // ─── userData 경로 호환성 ─────────────────────────────────────
 // v1.0+ 도구 이름이 iq-solvebuddy로 바뀌었지만, Electron의 userData 경로는
@@ -54,11 +55,8 @@ function loadEnv() {
 }
 
 let mainWindow: BrowserWindow | null = null;
-let leetcodeWindow: BrowserWindow | null = null;
-let atcoderWindow: BrowserWindow | null = null;
-let codeforcesWindow: BrowserWindow | null = null;
-let programmersWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+// 4개 플랫폼 임베드 윈도우 state는 EmbedController(embedWindow.ts)가 own (아래 controllers 선언 참고)
 let isQuitting = false;
 let activeShortcut: string | null = null;
 
@@ -97,77 +95,13 @@ function routeUrl(url: string) {
   }
 }
 
-// ─── LeetCode embedded 윈도우 ──────────────────────────────
+// ─── 임베드 윈도우 (v1.12+ EmbedController 추상화) ─────────────────
+// 4개 플랫폼 공통 로직(persist 윈도우/INJECT_SCRIPT chip/URL pull-push)은
+// src/main/embedWindow.ts의 EmbedController. 여기는 plat별 config + thin wrapper.
 
-// 임베드 페이지 → 메인 프로세스 통신용 sentinel
-// preload 없이 사용자 페이지 console.log를 console-message 이벤트로 캡처
-const PULL_SENTINEL = 'IQ_LEETBUDDY_PULL::';
-
-// 문제 페이지에 표시할 플로팅 버튼 주입 스크립트 (self-contained, idempotent)
-const INJECT_SCRIPT = `
-(() => {
-  if (window.__IQ_LEETBUDDY_INJECTED__) return;
-  window.__IQ_LEETBUDDY_INJECTED__ = true;
-
-  const SENTINEL = ${JSON.stringify(PULL_SENTINEL)};
-  const BTN_ID = '__iq_leetbuddy_pull_btn__';
-
-  function isProblemPage() {
-    return /\\/problems\\/[^\\/]+/.test(location.pathname);
-  }
-
-  function ensureBtn() {
-    let btn = document.getElementById(BTN_ID);
-    if (!isProblemPage()) {
-      if (btn) btn.remove();
-      return;
-    }
-    if (btn) return;
-    if (!document.body) return;
-
-    btn = document.createElement('button');
-    btn.id = BTN_ID;
-    btn.type = 'button';
-    btn.textContent = '→ solvebuddy로 가져오기';
-    btn.style.cssText = [
-      'position:fixed',
-      'bottom:24px',
-      'right:24px',
-      'z-index:2147483647',
-      'padding:10px 18px',
-      'background:linear-gradient(135deg,#cc785c,#b06547)',
-      'color:#fff',
-      'border:none',
-      'border-radius:999px',
-      'font-size:13px',
-      'font-weight:600',
-      'font-family:-apple-system,system-ui,BlinkMacSystemFont,sans-serif',
-      'letter-spacing:-0.01em',
-      'cursor:pointer',
-      'box-shadow:0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)',
-      'transition:transform 0.15s ease,box-shadow 0.15s ease',
-      'user-select:none',
-      '-webkit-app-region:no-drag',
-    ].join(';');
-    btn.addEventListener('mouseenter', () => {
-      btn.style.transform = 'translateY(-1px)';
-      btn.style.boxShadow = '0 8px 24px rgba(204,120,92,0.55),inset 0 0 0 1px rgba(255,255,255,0.18)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.transform = 'translateY(0)';
-      btn.style.boxShadow = '0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)';
-    });
-    btn.addEventListener('click', () => {
-      // console.log를 main 프로세스가 console-message 이벤트로 캡처
-      console.log(SENTINEL + location.href);
-      btn.textContent = '✓ solvebuddy로 보냄';
-      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
-    });
-    document.body.appendChild(btn);
-  }
-
-  // ─── lang hint: 메인에서 '원문' 클릭 시 hash로 전달된 lang을 안내 + 자동 선택 시도 ───
-  // LeetCode UI 변경에 fragile하므로 best-effort. 실패해도 토스트는 표시.
+// LeetCode lang hint — 'extraInjectScriptJs' 옵션으로 page-context에 inject.
+// ensureExtra()를 EmbedController가 주기적으로 호출 (chip ensureBtn과 함께)
+const LEETCODE_LANG_HINT_JS = `
   const LANG_DISPLAY = {
     python3:'Python3', python:'Python', java:'Java',
     cpp:'C++', c:'C', csharp:'C#',
@@ -183,7 +117,6 @@ const INJECT_SCRIPT = `
     const existing = document.getElementById(TOAST_ID);
     if (existing) existing.remove();
     if (!document.body) return;
-
     const toast = document.createElement('div');
     toast.id = TOAST_ID;
     toast.style.cssText = [
@@ -196,7 +129,7 @@ const INJECT_SCRIPT = `
     ].join(';');
     toast.innerHTML =
       '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px;">' +
-      '<strong style="color:#cc785c;font-size:12px;letter-spacing:0.04em;">LEETBUDDY</strong>' +
+      '<strong style="color:#cc785c;font-size:12px;letter-spacing:0.04em;">SOLVEBUDDY</strong>' +
       '<span style="color:rgba(255,255,255,0.5);font-size:11px;">선택된 시작 언어</span>' +
       '</div>' +
       '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">' + display + '</div>' +
@@ -217,14 +150,13 @@ const INJECT_SCRIPT = `
         if (ALL_DISPLAYS.includes(txt)) { langBtn = b; break; }
       }
       if (!langBtn) {
-        if (attempts > 25) clearInterval(interval); // ~7.5s
+        if (attempts > 25) clearInterval(interval);
         return;
       }
       clearInterval(interval);
       const current = (langBtn.textContent || '').trim();
-      if (current === display) return; // 이미 맞음
+      if (current === display) return;
       langBtn.click();
-      // 드롭다운 옵션 클릭 (열린 후 약간 대기)
       setTimeout(() => {
         const items = document.querySelectorAll('[role="option"], [role="menuitem"], li, [role="button"]');
         for (const item of items) {
@@ -237,632 +169,113 @@ const INJECT_SCRIPT = `
     }, 300);
   }
 
-  function ensureLangHint() {
+  function ensureExtra() {
     const m = location.hash.match(/leetbuddy-lang=([\\w-]+)/);
     if (!m) return;
     const targetLang = m[1].toLowerCase();
     if (window.__IQ_LEETBUDDY_LANG__ === targetLang) return;
     window.__IQ_LEETBUDDY_LANG__ = targetLang;
-
     const display = LANG_DISPLAY[targetLang] || targetLang;
     showLangToast(targetLang, display);
     trySwitchLang(display);
   }
-
-  // SPA navigation (history pushState) 대응: 초기 + interval 폴링
-  ensureBtn();
-  ensureLangHint();
-  setInterval(() => { ensureBtn(); ensureLangHint(); }, 1200);
-})();
 `;
 
-function injectPullButton(win: BrowserWindow) {
-  win.webContents.executeJavaScript(INJECT_SCRIPT).catch(() => {
-    // 페이지 로드 실패/접근 차단 시 무시 — 다음 navigate에서 다시 시도
+// mainWindow getter / ensureMainWindow — controller에 주입
+// (showAndFocus는 아래 정의 — arrow function으로 closure 사용해 forward reference OK)
+function getMainWindow(): BrowserWindow | null {
+  return mainWindow;
+}
+
+function ensureMainWindow(onReady: (win: BrowserWindow) => void): void {
+  if (mainWindow) {
+    onReady(mainWindow);
+    return;
+  }
+  createWindow();
+  const win = mainWindow as BrowserWindow | null;
+  win?.once('ready-to-show', () => {
+    win.show();
+    win.webContents.once('did-finish-load', () => onReady(win));
   });
 }
 
-function openLeetCodeWindow(url: string = 'https://leetcode.com/') {
-  if (leetcodeWindow && !leetcodeWindow.isDestroyed()) {
-    leetcodeWindow.loadURL(url);
-    leetcodeWindow.show();
-    leetcodeWindow.focus();
-    if (process.platform === 'darwin') app.focus({ steal: true });
-    return;
-  }
-
-  // 영속 세션 - 한 번 로그인하면 다음 실행까지 유지
-  const lcSession = session.fromPartition('persist:leetcode');
-
-  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-  leetcodeWindow = new BrowserWindow({
-    width: Math.min(1400, Math.floor(sw * 0.7)),
-    height: Math.min(1100, Math.floor(sh * 0.92)),
-    title: 'LeetCode',
+// 4개 플랫폼 controller — same config structure
+const embedControllers = {
+  LeetCode: new EmbedController({
+    name: 'leetcode',
+    partition: 'persist:leetcode',
+    defaultUrl: 'https://leetcode.com/',
+    windowTitle: 'LeetCode',
     backgroundColor: '#1a1a1a',
-    webPreferences: {
-      session: lcSession,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  leetcodeWindow.loadURL(url);
-
-  leetcodeWindow.on('closed', () => {
-    leetcodeWindow = null;
-  });
-
-  // LeetCode 안의 외부 링크는 외부 브라우저로
-  leetcodeWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    if (isLeetCodeUrl(openUrl)) {
-      leetcodeWindow?.loadURL(openUrl);
-    } else {
-      shell.openExternal(openUrl);
-    }
-    return { action: 'deny' };
-  });
-
-  // 페이지 로드 완료 + SPA 내부 라우팅 양쪽 모두에서 버튼 주입
-  leetcodeWindow.webContents.on('did-finish-load', () => {
-    if (leetcodeWindow) injectPullButton(leetcodeWindow);
-  });
-  leetcodeWindow.webContents.on('did-navigate-in-page', () => {
-    if (leetcodeWindow) injectPullButton(leetcodeWindow);
-  });
-
-  // 페이지 console.log에서 sentinel을 잡아서 메인으로 pull
-  // Electron 33 시그니처: (event, level, message, line, sourceId)
-  leetcodeWindow.webContents.on(
-    'console-message',
-    (_event, _level, message) => {
-      if (typeof message !== 'string') return;
-      if (!message.startsWith(PULL_SENTINEL)) return;
-      const url = message.slice(PULL_SENTINEL.length);
-      pullToMainWindow(url);
-    }
-  );
-}
-
-// 임베드 LeetCode 윈도우의 현재 URL을 메인 윈도우 input으로 밀어넣음
-// 푸시(임베드 버튼/메뉴) + 풀(메인 보조 버튼) 양방향에서 호출
-function pullToMainWindow(url: string) {
-  if (!url || !isLeetCodeUrl(url)) return;
-  if (!mainWindow) {
-    createWindow();
-    const win = mainWindow as BrowserWindow | null;
-    win?.once('ready-to-show', () => {
-      win.show();
-      // 첫 로드라면 DOM이 listener를 붙이기 전이라 메시지가 유실될 수 있음 → did-finish-load 대기
-      win.webContents.once('did-finish-load', () => {
-        win.webContents.send('pull-problem', url);
-      });
-      showAndFocus();
-    });
-    return;
-  }
-  showAndFocus();
-  mainWindow.webContents.send('pull-problem', url);
-}
-
-// 메뉴/단축키/메인 input 보조 버튼에서 공통으로 부름
-function pullCurrentLeetCodeUrl() {
-  if (!leetcodeWindow || leetcodeWindow.isDestroyed()) return;
-  const url = leetcodeWindow.webContents.getURL();
-  pullToMainWindow(url);
-}
-
-function getCurrentLeetCodeUrl(): string | null {
-  if (!leetcodeWindow || leetcodeWindow.isDestroyed()) return null;
-  const url = leetcodeWindow.webContents.getURL();
-  return isLeetCodeUrl(url) ? url : null;
-}
-
-// ─── AtCoder embedded 윈도우 ──────────────────────────────
-// LeetCode 패턴 재사용 — persist:atcoder partition + chip 버튼 INJECT_SCRIPT + URL pull
-// 차이점:
-//   - URL 패턴: /contests/{contestId}/tasks/{taskId}
-//   - lang hint 없음 (AtCoder는 starter code 자체가 없어서)
-//   - sentinel 분리: IQ_SOLVEBUDDY_AC_PULL:: (LeetCode와 안 섞이게)
-
-const ATCODER_PULL_SENTINEL = 'IQ_SOLVEBUDDY_AC_PULL::';
-
-const ATCODER_INJECT_SCRIPT = `
-(() => {
-  if (window.__IQ_SOLVEBUDDY_AC_INJECTED__) return;
-  window.__IQ_SOLVEBUDDY_AC_INJECTED__ = true;
-
-  const SENTINEL = ${JSON.stringify(ATCODER_PULL_SENTINEL)};
-  const BTN_ID = '__iq_solvebuddy_ac_pull_btn__';
-
-  function isTaskPage() {
-    return /\\/contests\\/[^\\/]+\\/tasks\\/[^\\/]+/.test(location.pathname);
-  }
-
-  function ensureBtn() {
-    let btn = document.getElementById(BTN_ID);
-    if (!isTaskPage()) {
-      if (btn) btn.remove();
-      return;
-    }
-    if (btn) return;
-    if (!document.body) return;
-
-    btn = document.createElement('button');
-    btn.id = BTN_ID;
-    btn.type = 'button';
-    btn.textContent = '→ solvebuddy로 가져오기';
-    btn.style.cssText = [
-      'position:fixed',
-      'bottom:24px',
-      'right:24px',
-      'z-index:2147483647',
-      'padding:10px 18px',
-      'background:linear-gradient(135deg,#cc785c,#b06547)',
-      'color:#fff',
-      'border:none',
-      'border-radius:999px',
-      'font-size:13px',
-      'font-weight:600',
-      'font-family:-apple-system,system-ui,BlinkMacSystemFont,sans-serif',
-      'letter-spacing:-0.01em',
-      'cursor:pointer',
-      'box-shadow:0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)',
-      'transition:transform 0.15s ease,box-shadow 0.15s ease',
-      'user-select:none',
-    ].join(';');
-    btn.addEventListener('mouseenter', () => {
-      btn.style.transform = 'translateY(-1px)';
-      btn.style.boxShadow = '0 8px 24px rgba(204,120,92,0.55),inset 0 0 0 1px rgba(255,255,255,0.18)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.transform = 'translateY(0)';
-      btn.style.boxShadow = '0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)';
-    });
-    btn.addEventListener('click', () => {
-      console.log(SENTINEL + location.href);
-      btn.textContent = '✓ solvebuddy로 보냄';
-      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
-    });
-    document.body.appendChild(btn);
-  }
-
-  ensureBtn();
-  setInterval(ensureBtn, 1200);
-})();
-`;
-
-function injectAtcoderPullButton(win: BrowserWindow) {
-  win.webContents.executeJavaScript(ATCODER_INJECT_SCRIPT).catch(() => {
-    // silent
-  });
-}
-
-function openAtcoderWindow(url: string = 'https://atcoder.jp/home') {
-  if (atcoderWindow && !atcoderWindow.isDestroyed()) {
-    atcoderWindow.loadURL(url);
-    atcoderWindow.show();
-    atcoderWindow.focus();
-    if (process.platform === 'darwin') app.focus({ steal: true });
-    return;
-  }
-
-  const acSession = session.fromPartition('persist:atcoder');
-
-  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-  atcoderWindow = new BrowserWindow({
-    width: Math.min(1400, Math.floor(sw * 0.7)),
-    height: Math.min(1100, Math.floor(sh * 0.92)),
-    title: 'AtCoder',
+    isPlatformUrl: isLeetCodeUrl,
+    pullSentinel: 'IQ_LEETBUDDY_PULL::',
+    problemPagePathPatternJs: '/problems/[^/]+',
+    extraInjectScriptJs: LEETCODE_LANG_HINT_JS,
+    mainWindowGetter: getMainWindow,
+    ensureMainWindow,
+    showAndFocus: () => showAndFocus(),
+  }),
+  AtCoder: new EmbedController({
+    name: 'atcoder',
+    partition: 'persist:atcoder',
+    defaultUrl: 'https://atcoder.jp/home',
+    windowTitle: 'AtCoder',
     backgroundColor: '#ffffff',
-    webPreferences: {
-      session: acSession,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  atcoderWindow.loadURL(url);
-
-  atcoderWindow.on('closed', () => {
-    atcoderWindow = null;
-  });
-
-  // AtCoder 외부 링크는 기본 브라우저로 (atcoder.jp 도메인은 임베드 안에서)
-  atcoderWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    if (isAtcoderUrl(openUrl)) {
-      atcoderWindow?.loadURL(openUrl);
-    } else {
-      shell.openExternal(openUrl);
-    }
-    return { action: 'deny' };
-  });
-
-  atcoderWindow.webContents.on('did-finish-load', () => {
-    if (atcoderWindow) injectAtcoderPullButton(atcoderWindow);
-  });
-  atcoderWindow.webContents.on('did-navigate-in-page', () => {
-    if (atcoderWindow) injectAtcoderPullButton(atcoderWindow);
-  });
-
-  atcoderWindow.webContents.on(
-    'console-message',
-    (_event, _level, message) => {
-      if (typeof message !== 'string') return;
-      if (!message.startsWith(ATCODER_PULL_SENTINEL)) return;
-      const url = message.slice(ATCODER_PULL_SENTINEL.length);
-      pullAtcoderToMainWindow(url);
-    }
-  );
-}
-
-function pullAtcoderToMainWindow(url: string) {
-  if (!url || !isAtcoderUrl(url)) return;
-  if (!mainWindow) {
-    createWindow();
-    const win = mainWindow as BrowserWindow | null;
-    win?.once('ready-to-show', () => {
-      win.show();
-      win.webContents.once('did-finish-load', () => {
-        win.webContents.send('pull-problem', url);
-      });
-      showAndFocus();
-    });
-    return;
-  }
-  showAndFocus();
-  mainWindow.webContents.send('pull-problem', url);
-}
-
-function pullCurrentAtcoderUrl() {
-  if (!atcoderWindow || atcoderWindow.isDestroyed()) return;
-  const url = atcoderWindow.webContents.getURL();
-  pullAtcoderToMainWindow(url);
-}
-
-function getCurrentAtcoderUrl(): string | null {
-  if (!atcoderWindow || atcoderWindow.isDestroyed()) return null;
-  const url = atcoderWindow.webContents.getURL();
-  return isAtcoderUrl(url) ? url : null;
-}
-
-// ─── Codeforces embedded 윈도우 ──────────────────────────────
-// AtCoder/LeetCode 패턴 평행. 단 partition은 `persist:codeforces` — browserFetch와 공유.
-// 같은 partition이라 임베드에서 한 번 로그인하면 problem fetch도 같은 cookies 활용 (Cloudflare 통과 + 로그인 상태)
-
-const CF_PULL_SENTINEL = 'IQ_SOLVEBUDDY_CF_PULL::';
-
-const CF_INJECT_SCRIPT = `
-(() => {
-  if (window.__IQ_SOLVEBUDDY_CF_INJECTED__) return;
-  window.__IQ_SOLVEBUDDY_CF_INJECTED__ = true;
-
-  const SENTINEL = ${JSON.stringify(CF_PULL_SENTINEL)};
-  const BTN_ID = '__iq_solvebuddy_cf_pull_btn__';
-
-  function isProblemPage() {
-    // /contest/{N}/problem/{X} 또는 /problemset/problem/{N}/{X}
-    return /\\/(?:contest\\/\\d+\\/problem\\/[A-Z]\\d*|problemset\\/problem\\/\\d+\\/[A-Z]\\d*)/i.test(location.pathname);
-  }
-
-  function ensureBtn() {
-    let btn = document.getElementById(BTN_ID);
-    if (!isProblemPage()) {
-      if (btn) btn.remove();
-      return;
-    }
-    if (btn) return;
-    if (!document.body) return;
-
-    btn = document.createElement('button');
-    btn.id = BTN_ID;
-    btn.type = 'button';
-    btn.textContent = '→ solvebuddy로 가져오기';
-    btn.style.cssText = [
-      'position:fixed',
-      'bottom:24px',
-      'right:24px',
-      'z-index:2147483647',
-      'padding:10px 18px',
-      'background:linear-gradient(135deg,#cc785c,#b06547)',
-      'color:#fff',
-      'border:none',
-      'border-radius:999px',
-      'font-size:13px',
-      'font-weight:600',
-      'font-family:-apple-system,system-ui,BlinkMacSystemFont,sans-serif',
-      'letter-spacing:-0.01em',
-      'cursor:pointer',
-      'box-shadow:0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)',
-      'transition:transform 0.15s ease,box-shadow 0.15s ease',
-      'user-select:none',
-    ].join(';');
-    btn.addEventListener('mouseenter', () => {
-      btn.style.transform = 'translateY(-1px)';
-      btn.style.boxShadow = '0 8px 24px rgba(204,120,92,0.55),inset 0 0 0 1px rgba(255,255,255,0.18)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.transform = 'translateY(0)';
-      btn.style.boxShadow = '0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)';
-    });
-    btn.addEventListener('click', () => {
-      console.log(SENTINEL + location.href);
-      btn.textContent = '✓ solvebuddy로 보냄';
-      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
-    });
-    document.body.appendChild(btn);
-  }
-
-  ensureBtn();
-  setInterval(ensureBtn, 1200);
-})();
-`;
-
-function injectCfPullButton(win: BrowserWindow) {
-  win.webContents.executeJavaScript(CF_INJECT_SCRIPT).catch(() => {
-    // silent
-  });
-}
-
-function openCodeforcesWindow(url: string = 'https://codeforces.com/') {
-  if (codeforcesWindow && !codeforcesWindow.isDestroyed()) {
-    codeforcesWindow.loadURL(url);
-    codeforcesWindow.show();
-    codeforcesWindow.focus();
-    if (process.platform === 'darwin') app.focus({ steal: true });
-    return;
-  }
-
-  // 'persist:codeforces' — browserFetch와 같은 partition (cookies 공유)
-  const cfSession = session.fromPartition('persist:codeforces');
-
-  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-  codeforcesWindow = new BrowserWindow({
-    width: Math.min(1400, Math.floor(sw * 0.7)),
-    height: Math.min(1100, Math.floor(sh * 0.92)),
-    title: 'Codeforces',
+    isPlatformUrl: isAtcoderUrl,
+    pullSentinel: 'IQ_SOLVEBUDDY_AC_PULL::',
+    problemPagePathPatternJs: '/contests/[^/]+/tasks/[^/]+',
+    mainWindowGetter: getMainWindow,
+    ensureMainWindow,
+    showAndFocus: () => showAndFocus(),
+  }),
+  Codeforces: new EmbedController({
+    name: 'codeforces',
+    partition: 'persist:codeforces',
+    defaultUrl: 'https://codeforces.com/',
+    windowTitle: 'Codeforces',
     backgroundColor: '#ffffff',
-    webPreferences: {
-      session: cfSession,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  codeforcesWindow.loadURL(url);
-
-  codeforcesWindow.on('closed', () => {
-    codeforcesWindow = null;
-  });
-
-  codeforcesWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    if (isCodeforcesUrl(openUrl)) {
-      codeforcesWindow?.loadURL(openUrl);
-    } else {
-      shell.openExternal(openUrl);
-    }
-    return { action: 'deny' };
-  });
-
-  codeforcesWindow.webContents.on('did-finish-load', () => {
-    if (codeforcesWindow) injectCfPullButton(codeforcesWindow);
-  });
-  codeforcesWindow.webContents.on('did-navigate-in-page', () => {
-    if (codeforcesWindow) injectCfPullButton(codeforcesWindow);
-  });
-
-  codeforcesWindow.webContents.on(
-    'console-message',
-    (_event, _level, message) => {
-      if (typeof message !== 'string') return;
-      if (!message.startsWith(CF_PULL_SENTINEL)) return;
-      const url = message.slice(CF_PULL_SENTINEL.length);
-      pullCfToMainWindow(url);
-    }
-  );
-}
-
-function pullCfToMainWindow(url: string) {
-  if (!url || !isCodeforcesUrl(url)) return;
-  if (!mainWindow) {
-    createWindow();
-    const win = mainWindow as BrowserWindow | null;
-    win?.once('ready-to-show', () => {
-      win.show();
-      win.webContents.once('did-finish-load', () => {
-        win.webContents.send('pull-problem', url);
-      });
-      showAndFocus();
-    });
-    return;
-  }
-  showAndFocus();
-  mainWindow.webContents.send('pull-problem', url);
-}
-
-function pullCurrentCodeforcesUrl() {
-  if (!codeforcesWindow || codeforcesWindow.isDestroyed()) return;
-  const url = codeforcesWindow.webContents.getURL();
-  pullCfToMainWindow(url);
-}
-
-function getCurrentCodeforcesUrl(): string | null {
-  if (!codeforcesWindow || codeforcesWindow.isDestroyed()) return null;
-  const url = codeforcesWindow.webContents.getURL();
-  return isCodeforcesUrl(url) ? url : null;
-}
-
-// ─── Programmers embedded 윈도우 ──────────────────────────────
-// AtCoder/CF 패턴 평행. partition: 'persist:programmers'
-// 핵심 차이: submission 자동 fetch가 이 윈도우의 ace editor 값을 직접 추출 (programmersSubmission.ts)
-
-const PG_PULL_SENTINEL = 'IQ_SOLVEBUDDY_PG_PULL::';
-
-const PG_INJECT_SCRIPT = `
-(() => {
-  if (window.__IQ_SOLVEBUDDY_PG_INJECTED__) return;
-  window.__IQ_SOLVEBUDDY_PG_INJECTED__ = true;
-
-  const SENTINEL = ${JSON.stringify(PG_PULL_SENTINEL)};
-  const BTN_ID = '__iq_solvebuddy_pg_pull_btn__';
-
-  function isLessonPage() {
-    return /\\/learn\\/courses\\/\\d+\\/lessons\\/\\d+/.test(location.pathname);
-  }
-
-  function ensureBtn() {
-    let btn = document.getElementById(BTN_ID);
-    if (!isLessonPage()) {
-      if (btn) btn.remove();
-      return;
-    }
-    if (btn) return;
-    if (!document.body) return;
-
-    btn = document.createElement('button');
-    btn.id = BTN_ID;
-    btn.type = 'button';
-    btn.textContent = '→ solvebuddy로 가져오기';
-    btn.style.cssText = [
-      'position:fixed',
-      'bottom:24px',
-      'right:24px',
-      'z-index:2147483647',
-      'padding:10px 18px',
-      'background:linear-gradient(135deg,#cc785c,#b06547)',
-      'color:#fff',
-      'border:none',
-      'border-radius:999px',
-      'font-size:13px',
-      'font-weight:600',
-      'font-family:-apple-system,system-ui,BlinkMacSystemFont,sans-serif',
-      'letter-spacing:-0.01em',
-      'cursor:pointer',
-      'box-shadow:0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)',
-      'transition:transform 0.15s ease,box-shadow 0.15s ease',
-      'user-select:none',
-    ].join(';');
-    btn.addEventListener('mouseenter', () => {
-      btn.style.transform = 'translateY(-1px)';
-      btn.style.boxShadow = '0 8px 24px rgba(204,120,92,0.55),inset 0 0 0 1px rgba(255,255,255,0.18)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.transform = 'translateY(0)';
-      btn.style.boxShadow = '0 6px 20px rgba(204,120,92,0.45),inset 0 0 0 1px rgba(255,255,255,0.12)';
-    });
-    btn.addEventListener('click', () => {
-      console.log(SENTINEL + location.href);
-      btn.textContent = '✓ solvebuddy로 보냄';
-      setTimeout(() => { btn.textContent = '→ solvebuddy로 가져오기'; }, 1600);
-    });
-    document.body.appendChild(btn);
-  }
-
-  ensureBtn();
-  setInterval(ensureBtn, 1200);
-})();
-`;
-
-function injectPgPullButton(win: BrowserWindow) {
-  win.webContents.executeJavaScript(PG_INJECT_SCRIPT).catch(() => {
-    // silent
-  });
-}
-
-function openProgrammersWindow(url: string = 'https://school.programmers.co.kr/learn/challenges') {
-  if (programmersWindow && !programmersWindow.isDestroyed()) {
-    programmersWindow.loadURL(url);
-    programmersWindow.show();
-    programmersWindow.focus();
-    if (process.platform === 'darwin') app.focus({ steal: true });
-    return;
-  }
-
-  // 'persist:programmers' — programmers.ts의 fetchProgrammersHtml과 cookies 공유
-  // 한 번 로그인하면 Lv 3+ 문제 fetch도 같은 cookies로 가능
-  const pgSession = session.fromPartition('persist:programmers');
-
-  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
-  programmersWindow = new BrowserWindow({
-    width: Math.min(1400, Math.floor(sw * 0.7)),
-    height: Math.min(1100, Math.floor(sh * 0.92)),
-    title: '프로그래머스',
+    isPlatformUrl: isCodeforcesUrl,
+    pullSentinel: 'IQ_SOLVEBUDDY_CF_PULL::',
+    problemPagePathPatternJs:
+      '/(?:contest/\\d+/problem/[A-Z]\\d*|problemset/problem/\\d+/[A-Z]\\d*)',
+    mainWindowGetter: getMainWindow,
+    ensureMainWindow,
+    showAndFocus: () => showAndFocus(),
+  }),
+  Programmers: new EmbedController({
+    name: 'programmers',
+    partition: 'persist:programmers',
+    defaultUrl: 'https://school.programmers.co.kr/learn/challenges',
+    windowTitle: '프로그래머스',
     backgroundColor: '#ffffff',
-    webPreferences: {
-      session: pgSession,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+    isPlatformUrl: isProgrammersUrl,
+    pullSentinel: 'IQ_SOLVEBUDDY_PG_PULL::',
+    problemPagePathPatternJs: '/learn/courses/\\d+/lessons/\\d+',
+    mainWindowGetter: getMainWindow,
+    ensureMainWindow,
+    showAndFocus: () => showAndFocus(),
+  }),
+};
 
-  programmersWindow.loadURL(url);
+// thin wrappers — ipc.ts의 setLeetCodeOpener 등이 함수 reference로 받으므로 유지.
+// 또한 routeUrl이 함수 이름으로 호출하므로 wrapper가 필요.
+function openLeetCodeWindow(url?: string): void { embedControllers.LeetCode.open(url); }
+function getCurrentLeetCodeUrl(): string | null { return embedControllers.LeetCode.getCurrentUrl(); }
+function pullCurrentLeetCodeUrl(): void { embedControllers.LeetCode.pullCurrent(); }
 
-  programmersWindow.on('closed', () => {
-    programmersWindow = null;
-  });
+function openAtcoderWindow(url?: string): void { embedControllers.AtCoder.open(url); }
+function getCurrentAtcoderUrl(): string | null { return embedControllers.AtCoder.getCurrentUrl(); }
+function pullCurrentAtcoderUrl(): void { embedControllers.AtCoder.pullCurrent(); }
 
-  programmersWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    if (isProgrammersUrl(openUrl)) {
-      programmersWindow?.loadURL(openUrl);
-    } else {
-      shell.openExternal(openUrl);
-    }
-    return { action: 'deny' };
-  });
+function openCodeforcesWindow(url?: string): void { embedControllers.Codeforces.open(url); }
+function getCurrentCodeforcesUrl(): string | null { return embedControllers.Codeforces.getCurrentUrl(); }
+function pullCurrentCodeforcesUrl(): void { embedControllers.Codeforces.pullCurrent(); }
 
-  programmersWindow.webContents.on('did-finish-load', () => {
-    if (programmersWindow) injectPgPullButton(programmersWindow);
-  });
-  programmersWindow.webContents.on('did-navigate-in-page', () => {
-    if (programmersWindow) injectPgPullButton(programmersWindow);
-  });
-
-  programmersWindow.webContents.on(
-    'console-message',
-    (_event, _level, message) => {
-      if (typeof message !== 'string') return;
-      if (!message.startsWith(PG_PULL_SENTINEL)) return;
-      const url = message.slice(PG_PULL_SENTINEL.length);
-      pullPgToMainWindow(url);
-    }
-  );
-}
-
-function pullPgToMainWindow(url: string) {
-  if (!url || !isProgrammersUrl(url)) return;
-  if (!mainWindow) {
-    createWindow();
-    const win = mainWindow as BrowserWindow | null;
-    win?.once('ready-to-show', () => {
-      win.show();
-      win.webContents.once('did-finish-load', () => {
-        win.webContents.send('pull-problem', url);
-      });
-      showAndFocus();
-    });
-    return;
-  }
-  showAndFocus();
-  mainWindow.webContents.send('pull-problem', url);
-}
-
-function pullCurrentProgrammersUrl() {
-  if (!programmersWindow || programmersWindow.isDestroyed()) return;
-  const url = programmersWindow.webContents.getURL();
-  pullPgToMainWindow(url);
-}
-
-function getCurrentProgrammersUrl(): string | null {
-  if (!programmersWindow || programmersWindow.isDestroyed()) return null;
-  const url = programmersWindow.webContents.getURL();
-  return isProgrammersUrl(url) ? url : null;
-}
-
-// programmersSubmission이 임베드 윈도우 접근 — ipc setter로 노출
-function getProgrammersWindow(): BrowserWindow | null {
-  if (!programmersWindow || programmersWindow.isDestroyed()) return null;
-  return programmersWindow;
-}
+function openProgrammersWindow(url?: string): void { embedControllers.Programmers.open(url); }
+function getCurrentProgrammersUrl(): string | null { return embedControllers.Programmers.getCurrentUrl(); }
+function pullCurrentProgrammersUrl(): void { embedControllers.Programmers.pullCurrent(); }
+function getProgrammersWindow(): BrowserWindow | null { return embedControllers.Programmers.getWindow(); }
 
 // ─── 메인 윈도우 ──────────────────────────────
 function createWindow() {

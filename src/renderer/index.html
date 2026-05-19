@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="../vendor/codemirror/codemirror.css">
   <link rel="stylesheet" href="../vendor/codemirror/theme/material-darker.css">
   <link rel="stylesheet" href="../vendor/codemirror/theme/material.css">
+  <link rel="stylesheet" href="../vendor/codemirror/addon/dialog.css">
+  <link rel="stylesheet" href="../vendor/codemirror/addon/foldgutter.css">
   <link rel="stylesheet" href="../vendor/katex/katex.min.css">
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -159,7 +161,7 @@
   </main>
 
   <footer class="app-footer">
-    <span>iq-agent-lab · v1.11.0</span>
+    <span>iq-agent-lab · v1.12.0</span>
     <span class="footer-divider">·</span>
     <span id="config-status">설정 확인 중...</span>
     <span class="footer-divider">·</span>
@@ -218,15 +220,15 @@
             <ol>
               <li>
                 아래 링크를 클릭하면 <strong>scope가 미리 체크된 발급 페이지</strong>가 열림:<br>
-                <a href="https://github.com/settings/tokens/new?scopes=repo&description=Solve%20Buddy" target="_blank" rel="noopener" class="help-link">
-                  → 새 PAT 발급하기 (repo scope, "Solve Buddy" description 미리 입력)
+                <a href="https://github.com/settings/tokens/new?scopes=repo,gist&description=Solve%20Buddy" target="_blank" rel="noopener" class="help-link">
+                  → 새 PAT 발급하기 (repo + gist scope, "Solve Buddy" description 미리 입력)
                 </a>
               </li>
               <li><strong>Expiration</strong>: 본인 보안 정책에 맞춰. 'No expiration'도 OK (개인 도구 한정).</li>
-              <li><strong>Scopes</strong>: <code>repo</code> 하나만 체크 (이미 체크되어 있음). 다른 항목 다 무시.
+              <li><strong>Scopes</strong>: <code>repo</code> + <code>gist</code> 두 개 체크 (위 링크로 미리 체크됨).
                 <ul class="help-sub">
-                  <li>private 레포까지 쓰려면 <code>repo</code> 통째</li>
-                  <li>public 레포만 쓸 거면 <code>public_repo</code> 만 체크해도 OK</li>
+                  <li><code>repo</code>: 풀이 commit + 인덱스 갱신 (private 레포까지 쓰려면 통째 / public만이면 <code>public_repo</code> 만 OK)</li>
+                  <li><code>gist</code>: 풀이 통계 디바이스 간 sync (📊 모달의 "☁ Gist 백업") — sync 안 쓸 거면 미체크 OK</li>
                 </ul>
               </li>
               <li>맨 아래 <strong>Generate token</strong> 클릭 → 한 번만 표시되는 토큰을 복사해 위 입력란에 붙여넣고 저장.</li>
@@ -260,6 +262,14 @@
             <span class="toggle-label-wrap">
               <span class="toggle-label">업로드 전 Accepted 확인 (LeetCode / AtCoder / Codeforces)</span>
               <span class="toggle-hint">켜두면 풀이 업로드 직전에 임베드 세션으로 통과 submission 존재 여부 확인. 없으면 "그래도 업로드?" 확인 모달. 본인 풀이 의도면 override 가능. 프로그래머스는 사전 확인 미지원 (AC 개념 없음 — 영향 없음).</span>
+            </span>
+          </label>
+
+          <label class="toggle-field">
+            <input type="checkbox" id="setting-editor-line-wrap">
+            <span class="toggle-label-wrap">
+              <span class="toggle-label">에디터 줄바꿈 (line wrap)</span>
+              <span class="toggle-hint">step-3 코드 에디터가 긴 줄을 가로 스크롤 대신 줄바꿈으로 표시. Codeforces / AtCoder 큰 풀이에 유용. 짧은 LeetCode 풀이는 기본 (가로 스크롤) 선호.</span>
             </span>
           </label>
 
@@ -314,6 +324,9 @@
           </button>
           <button type="button" class="secondary stats-backfill-btn" id="backfill-btn" title="GitHub 풀이 레포에서 인덱스를 읽어 통계에 채워넣음 (다른 디바이스 / v0.5 이전 풀이)">
             ↻ GitHub 동기화
+          </button>
+          <button type="button" class="secondary stats-backfill-btn" id="gist-sync-btn" title="GitHub Gist에 풀이 통계 백업 + 다른 디바이스에서 pull (실시간 디바이스 간 동기화). PAT에 gist scope 필요">
+            ☁ Gist 백업
           </button>
           <button type="button" class="modal-close" id="close-stats" aria-label="닫기">×</button>
         </div>
@@ -388,6 +401,16 @@
   <script src="../vendor/codemirror/addon/closebrackets.js"></script>
   <script src="../vendor/codemirror/addon/placeholder.js"></script>
   <script src="../vendor/codemirror/addon/active-line.js"></script>
+  <!-- v1.12+ search (Cmd+F) + fold + jump-to-line -->
+  <script src="../vendor/codemirror/addon/dialog.js"></script>
+  <script src="../vendor/codemirror/addon/searchcursor.js"></script>
+  <script src="../vendor/codemirror/addon/search.js"></script>
+  <script src="../vendor/codemirror/addon/jump-to-line.js"></script>
+  <script src="../vendor/codemirror/addon/foldcode.js"></script>
+  <script src="../vendor/codemirror/addon/foldgutter.js"></script>
+  <script src="../vendor/codemirror/addon/brace-fold.js"></script>
+  <script src="../vendor/codemirror/addon/indent-fold.js"></script>
+  <script src="../vendor/codemirror/addon/comment-fold.js"></script>
   <script src="./renderer.js"></script>
 </body>
 </html>
