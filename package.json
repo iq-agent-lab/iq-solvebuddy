@@ -1,6 +1,6 @@
 {
   "name": "iq-leetbuddy",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "LeetCode/프로그래머스/AtCoder/Codeforces 풀이를 한국어로 정리하고 AI 회고를 생성해 GitHub에 자동 업로드하는 데스크톱 에이전트",
   "main": "dist/main/index.js",
   "scripts": {
