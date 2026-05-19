@@ -494,17 +494,20 @@ html.theme-light .planet-pulse {
 }
 
 .recent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: var(--bg-soft);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  padding: 4px 10px;
+  padding: 4px 10px 4px 4px;
   border-radius: 99px;
   font-size: 11.5px;
   font-family: inherit;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
-  max-width: 240px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.5;
@@ -516,9 +519,26 @@ html.theme-light .planet-pulse {
   background: var(--bg-elevated);
 }
 
+/* 플랫폼 abbr badge (LC/PG/AC/CF/BJ) — 색깔별 구분 */
+.recent-chip .recent-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--badge-color, var(--accent));
+  color: #fff;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 99px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .recent-chip .recent-chip-id {
   color: var(--text-dim);
-  margin-right: 4px;
+  margin-right: 2px;
   font-family: var(--font-mono);
   font-size: 10.5px;
 }
@@ -2079,13 +2099,29 @@ html.theme-light .hljs-meta {
 
 .stats-recent-row {
   display: grid;
-  grid-template-columns: 36px 1fr 60px 70px;
+  grid-template-columns: 28px 60px 1fr 60px 70px;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
   border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg-soft);
+}
+
+/* 플랫폼 abbr badge — recent-chip-badge와 동일 스타일 */
+.stats-recent-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--badge-color, var(--accent));
+  color: #fff;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 99px;
+  line-height: 1;
 }
 
 .stats-recent-id {

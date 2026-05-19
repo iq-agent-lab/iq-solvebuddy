@@ -23,6 +23,11 @@ async function getMarked() {
   }
 
   // KaTeX extension 등록 — $...$ / $$...$$ 자동 렌더링
+  //
+  // nonStandard: true 가 핵심 — 기본 inline regex는 closing `$` 뒤에 공백/구두점/줄끝만 허용.
+  // 한국어 텍스트 (`$1$부터`, `$N$의`) 처럼 `$` 뒤에 한글이 오면 매칭 실패 → raw text 노출.
+  // nonStandard 모드는 boundary 요구 제거 → CF/AtCoder/프로그래머스 모든 한국어 문맥에서 작동.
+  //
   // throwOnError: false → 잘못된 LaTeX는 원본 텍스트 그대로 출력 (앱 크래시 방지)
   try {
     const katexMod = await importDynamic('marked-katex-extension');
@@ -30,6 +35,7 @@ async function getMarked() {
     _marked.use(
       markedKatex({
         throwOnError: false,
+        nonStandard: true,
         output: 'html', // mathml 모드는 일부 브라우저 호환성 이슈
       })
     );
