@@ -13,6 +13,7 @@
 import * as cheerio from 'cheerio';
 import { session, BrowserWindow } from 'electron';
 import { ProgrammersProblem } from '../types';
+import { executeJsOnPage } from './browserFetch';
 
 const BASE_URL = 'https://school.programmers.co.kr';
 const PARTITION = 'persist:programmers';
@@ -340,6 +341,39 @@ function extractExampleTestcases($: cheerio.CheerioAPI, contentHtml: string): st
 // 임베드 윈도우의 client-rendered DOM에서 level 추출
 // PG는 SPA — 정적 HTML엔 .level-active가 없을 수 있음
 // 임베드가 해당 lessonId 페이지에 있으면 JS 실행으로 정확한 level 가져옴
+// PG 페이지에서 level 추출하는 JS — 임베드/hidden window 공통
+const LEVEL_EXTRACT_JS = `
+(function() {
+  // 1) .level-active 별 count (active 상태 별 아이콘 수 = Lv 숫자)
+  var active = document.querySelectorAll('.level-active').length;
+  if (active > 0 && active <= 5) return active;
+  // 2) data-level attribute
+  var dataLv = document.querySelector('[data-level]');
+  if (dataLv) {
+    var v = parseInt(dataLv.getAttribute('data-level'), 10);
+    if (v >= 1 && v <= 5) return v;
+  }
+  // 3) class에 level-N 패턴 (예: <span class="level level-3">)
+  var lvEls = document.querySelectorAll('[class*="level-"]');
+  for (var i = 0; i < lvEls.length; i++) {
+    var cls = lvEls[i].className || '';
+    var m = cls.match(/\\blevel-(\\d)\\b/);
+    if (m) {
+      var v2 = parseInt(m[1], 10);
+      if (v2 >= 1 && v2 <= 5) return v2;
+    }
+  }
+  // 4) text 패턴 (Lv. 3 / 레벨 3)
+  var bodyText = document.body && document.body.innerText || '';
+  var m2 = bodyText.match(/(?:Lv\\.?|레벨)\\s*(\\d)/);
+  if (m2) {
+    var n = parseInt(m2[1], 10);
+    if (n >= 1 && n <= 5) return n;
+  }
+  return 0;
+})()
+`;
+
 async function extractLevelFromEmbed(lessonId: string): Promise<string | null> {
   if (!_windowGetter) return null;
   const win = _windowGetter();
@@ -350,33 +384,24 @@ async function extractLevelFromEmbed(lessonId: string): Promise<string | null> {
   if (!urlPattern.test(currentUrl)) return null;
 
   try {
-    const count = (await win.webContents.executeJavaScript(
-      `
-      (function() {
-        // 1) .level-active 별 count (active 상태 별 아이콘 수 = Lv 숫자)
-        var active = document.querySelectorAll('.level-active').length;
-        if (active > 0 && active <= 5) return active;
-        // 2) data-level attribute
-        var dataLv = document.querySelector('[data-level]');
-        if (dataLv) {
-          var v = parseInt(dataLv.getAttribute('data-level'), 10);
-          if (v >= 1 && v <= 5) return v;
-        }
-        // 3) text 패턴 (Lv. 3 등)
-        var bodyText = document.body && document.body.innerText || '';
-        var m = bodyText.match(/(?:Lv\\.?|레벨)\\s*(\\d)/);
-        if (m) {
-          var n = parseInt(m[1], 10);
-          if (n >= 1 && n <= 5) return n;
-        }
-        return 0;
-      })()
-      `,
-      true
-    )) as number;
+    const count = (await win.webContents.executeJavaScript(LEVEL_EXTRACT_JS, true)) as number;
     if (count >= 1 && count <= 5) return `Lv ${count}`;
   } catch {
     // silent
+  }
+  return null;
+}
+
+// 3순위 fallback — hidden BrowserWindow로 페이지 로드 + JS 실행
+// 임베드 없거나 다른 페이지일 때. ~3초 비용이지만 robust.
+// 결과는 캐시되어 다음부터 fast.
+async function extractLevelViaBrowser(lessonId: string): Promise<string | null> {
+  try {
+    const url = `${BASE_URL}/learn/courses/30/lessons/${lessonId}`;
+    const count = await executeJsOnPage<number>(url, PARTITION, LEVEL_EXTRACT_JS, 12000);
+    if (count >= 1 && count <= 5) return `Lv ${count}`;
+  } catch {
+    // silent — 'Lv ?' fallback
   }
   return null;
 }
@@ -432,10 +457,16 @@ export async function fetchProgrammersProblem(lessonId: string): Promise<Program
 
   // 1) HTML 정적 추출 시도
   let difficulty = extractDifficulty($, html);
-  // 2) 'Lv ?'면 임베드 윈도우에서 client-rendered DOM JS 추출 (SPA initial state 우회)
+  // 2) 'Lv ?'면 임베드 윈도우에서 client-rendered DOM JS 추출 (빠름, 임베드 있을 때만)
   if (difficulty === 'Lv ?') {
     const fromEmbed = await extractLevelFromEmbed(lessonId);
     if (fromEmbed) difficulty = fromEmbed;
+  }
+  // 3) 임베드 없으면 hidden BrowserWindow 새로 띄워 JS 실행 (~3초, robust)
+  // 결과는 캐시되니 다음부터 fast — 첫 fetch만 느림
+  if (difficulty === 'Lv ?') {
+    const fromBrowser = await extractLevelViaBrowser(lessonId);
+    if (fromBrowser) difficulty = fromBrowser;
   }
   const codeSnippets = extractCodeSnippets($);
   const exampleTestcases = extractExampleTestcases($, content);

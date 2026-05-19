@@ -114,6 +114,25 @@ export async function getAtcoderDifficulty(taskId: string): Promise<number | nul
 }
 
 /**
+ * AtCoder Problems 색깔 체계 — 사용자 레이팅과 동일.
+ * 800~1199는 녹색(Green), 1600~1999는 황색(Yellow) 식의 표준.
+ * difficulty rating 숫자 → 색깔 emoji + 한국어 이름.
+ *
+ * @param diff IRT difficulty rating (음수 가능)
+ */
+export function difficultyColor(diff: number): { emoji: string; nameKr: string; nameEn: string } {
+  // 음수는 매우 쉬움 — Grey 계열로 묶음
+  if (diff < 400) return { emoji: '⚫', nameKr: '회색', nameEn: 'Grey' };
+  if (diff < 800) return { emoji: '🟤', nameKr: '갈색', nameEn: 'Brown' };
+  if (diff < 1200) return { emoji: '🟢', nameKr: '녹색', nameEn: 'Green' };
+  if (diff < 1600) return { emoji: '🔵', nameKr: '청색', nameEn: 'Cyan' };
+  if (diff < 2000) return { emoji: '🟡', nameKr: '황색', nameEn: 'Yellow' };
+  if (diff < 2400) return { emoji: '🟠', nameKr: '주황', nameEn: 'Orange' };
+  if (diff < 2800) return { emoji: '🔴', nameKr: '적색', nameEn: 'Red' };
+  return { emoji: '⭐', nameKr: '레전드', nameEn: 'Legend' };
+}
+
+/**
  * 앱 부팅 시 background prewarm — 사용자가 AtCoder 문제 가져올 때 대기 시간 제거.
  * 실패해도 silent.
  */

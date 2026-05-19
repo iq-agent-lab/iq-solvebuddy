@@ -498,6 +498,8 @@ function renderBarRow(label: string, count: number, max: number, extraClass = ''
 
 // 통계 dashboard 필터 — 플랫폼별 분리 (난이도 기준이 다르므로)
 let statsFilter: 'all' | PlatformId = 'all';
+// 풀이 검색 — title / titleSlug / language 부분일치
+let statsSearchQuery: string = '';
 
 // 난이도 분포 — 플랫폼별 분류 로직 다름
 // LeetCode: Easy/Medium/Hard
@@ -677,24 +679,42 @@ function renderStatsDashboard(): void {
     })
     .join('');
 
-  // 최근 풀이 10개 (이미 unshift로 최신 우선) — 플랫폼 badge 포함
-  const recent = solutions.slice(0, 10);
-  $('stats-recent').innerHTML = recent
-    .map((s) => {
-      const date = ymdKey(s.savedAt);
-      const platform = (s.platform || 'LeetCode') as PlatformId;
-      const meta = PLATFORM_META[platform] || PLATFORM_META.LeetCode;
-      const abbr = escapeHtml(meta.abbr);
-      const platLabel = escapeHtml(meta.label);
-      return `<div class="stats-recent-row" title="${platLabel}">
-        <span class="stats-recent-badge" style="--badge-color:${meta.color}">${abbr}</span>
-        <span class="stats-recent-id">#${escapeHtml(String(s.frontendId))}</span>
-        <span class="stats-recent-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
-        <span class="stats-recent-lang">${escapeHtml(s.language)}</span>
-        <span class="stats-recent-date">${date}</span>
-      </div>`;
-    })
-    .join('');
+  // 풀이 목록 — 검색어 있으면 필터, 없으면 최근 10개 (기존 동작)
+  const q = statsSearchQuery.trim().toLowerCase();
+  let displayed: SolutionRecord[];
+  let listLabel: string;
+  if (q) {
+    displayed = solutions.filter((s) =>
+      s.title.toLowerCase().includes(q) ||
+      s.titleSlug.toLowerCase().includes(q) ||
+      s.language.toLowerCase().includes(q) ||
+      String(s.frontendId).toLowerCase().includes(q)
+    );
+    listLabel = `검색 결과 (${displayed.length})`;
+  } else {
+    displayed = solutions.slice(0, 10);
+    listLabel = `최근 풀이 (${displayed.length})`;
+  }
+  $('stats-recent-title').textContent = listLabel;
+
+  $('stats-recent').innerHTML = displayed.length === 0
+    ? '<div class="stats-empty-inline">검색 결과가 없어요</div>'
+    : displayed
+        .map((s) => {
+          const date = ymdKey(s.savedAt);
+          const platform = (s.platform || 'LeetCode') as PlatformId;
+          const meta = PLATFORM_META[platform] || PLATFORM_META.LeetCode;
+          const abbr = escapeHtml(meta.abbr);
+          const platLabel = escapeHtml(meta.label);
+          return `<div class="stats-recent-row" title="${platLabel}">
+            <span class="stats-recent-badge" style="--badge-color:${meta.color}">${abbr}</span>
+            <span class="stats-recent-id">#${escapeHtml(String(s.frontendId))}</span>
+            <span class="stats-recent-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+            <span class="stats-recent-lang">${escapeHtml(s.language)}</span>
+            <span class="stats-recent-date">${date}</span>
+          </div>`;
+        })
+        .join('');
 }
 
 function openStats(): void {
@@ -2101,6 +2121,20 @@ $('stats-tabs').addEventListener('click', (e: Event) => {
   const allTabs = document.querySelectorAll('.stats-tab');
   allTabs.forEach((t) => t.classList.toggle('active', t === tab));
   statsFilter = platform;
+  renderStatsDashboard();
+});
+
+// 풀이 검색 — 제목/슬러그/언어/번호 부분일치 필터
+$input('stats-search').addEventListener('input', (e: Event) => {
+  const v = (e.target as HTMLInputElement).value;
+  statsSearchQuery = v;
+  $('stats-search-clear').classList.toggle('hidden', !v);
+  renderStatsDashboard();
+});
+$btn('stats-search-clear').addEventListener('click', () => {
+  $input('stats-search').value = '';
+  statsSearchQuery = '';
+  $('stats-search-clear').classList.add('hidden');
   renderStatsDashboard();
 });
 $btn('close-stats').addEventListener('click', (e: Event) => {

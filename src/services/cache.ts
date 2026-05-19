@@ -26,12 +26,14 @@ function cachePath(platform: CachePlatform, key: string): string {
 }
 
 // 캐시된 결과의 metadata 품질이 의심스러우면 cache miss로 처리해 재fetch 유도
-// v1.6.2 이전 캐시된 CF/PG는 rating/level이 '?' / 'Lv ?'로 저장됐을 수 있음
-// → 사용자가 수동 캐시 삭제 안 해도 다음 fetch 시 자동 refresh
+// 옛 추출 로직으로 저장된 result는 새 fix 로직으로 자동 refresh
 function looksStale(result: FetchProblemResult): boolean {
   const p = result.problem;
   const diff = (p as { difficulty?: string }).difficulty || '';
-  if (diff === '?' || diff === 'Lv ?' || diff === '?점' || diff === '?점 · 난이도 ≤0') return true;
+  // CF rating 미정 / PG level 미정 / AC 점수 미정 — 모두 stale
+  if (diff === '?' || diff === 'Lv ?' || diff === '?점') return true;
+  // 옛 AC 표기 "...· 난이도 ≤0" 또는 "...· 난이도 1234" — v1.9+에서 색깔 표기로 교체
+  if (/난이도\s*(?:≤?\d+|\?)/.test(diff)) return true;
   return false;
 }
 

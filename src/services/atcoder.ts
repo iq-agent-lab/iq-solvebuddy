@@ -15,7 +15,7 @@
 
 import * as cheerio from 'cheerio';
 import { AtCoderProblem } from '../types';
-import { getAtcoderDifficulty } from './atcoderModels';
+import { getAtcoderDifficulty, difficultyColor } from './atcoderModels';
 
 const BASE_URL = 'https://atcoder.jp';
 
@@ -192,11 +192,19 @@ export async function fetchAtcoderProblem(ref: AtCoderTaskRef): Promise<AtCoderP
   // difficulty rating은 외부 API (kenkoooo.com) — 캐시된 경우 빠르고, 첫 호출은 5초 정도
   // 실패해도 점수만 표시되도록 silent fallback
   const diffRating = await getAtcoderDifficulty(ref.taskId);
-  // 표기: "300점 · 난이도 1234" / 난이도 < 0이면 "300점 · 난이도 ≤0" / null이면 "300점"
+  // 표기 (AtCoder Problems 색깔 체계):
+  //   rating null  → "300점"
+  //   rating < 0   → "100점 · ⚫ 회색"
+  //   rating >= 0  → "500점 · 🔵 청색 (1350)"
   let difficultyLabel = score;
   if (diffRating !== null) {
-    const ratingLabel = diffRating < 0 ? '≤0' : String(diffRating);
-    difficultyLabel = `${score} · 난이도 ${ratingLabel}`;
+    const { emoji, nameKr } = difficultyColor(diffRating);
+    if (diffRating < 0) {
+      // 매우 쉬움 — 숫자 가치 낮음, 색깔만
+      difficultyLabel = `${score} · ${emoji} ${nameKr}`;
+    } else {
+      difficultyLabel = `${score} · ${emoji} ${nameKr} (${diffRating})`;
+    }
   }
   const exampleTestcases = extractExamples($, statementHtml);
 

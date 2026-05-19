@@ -196,7 +196,7 @@
   </main>
 
   <footer class="app-footer">
-    <span>iq-agent-lab · v1.8.0</span>
+    <span>iq-agent-lab · v1.9.0</span>
     <span class="footer-divider">·</span>
     <span id="config-status">설정 확인 중...</span>
     <span class="footer-divider">·</span>
@@ -394,7 +394,11 @@
           <h3 class="stats-section-title">월별 풀이수 (최근 6개월)</h3>
           <div class="stats-monthly" id="stats-monthly"></div>
 
-          <h3 class="stats-section-title">최근 풀이 (10개)</h3>
+          <h3 class="stats-section-title" id="stats-recent-title">최근 풀이 (10개)</h3>
+          <div class="stats-search-wrap">
+            <input type="text" id="stats-search" class="stats-search" placeholder="제목 / 슬러그 / 언어 검색" autocomplete="off" spellcheck="false">
+            <button type="button" id="stats-search-clear" class="stats-search-clear hidden" aria-label="검색어 지우기">×</button>
+          </div>
           <div class="stats-recent" id="stats-recent"></div>
         </div>
       </div>
