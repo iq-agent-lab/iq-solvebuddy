@@ -2,6 +2,7 @@
 
 import { fetchProblem, resolveTitleSlugByFrontendId } from './leetcode';
 import { fetchProgrammersProblem } from './programmers';
+import { organizeProgrammersMarkdown } from './programmersOrganize';
 import { fetchAtcoderProblem } from './atcoder';
 import { fetchCodeforcesProblem } from './codeforces';
 import { translateProblem, StreamCallback } from './translator';
@@ -88,8 +89,12 @@ export async function fetchAndTranslate(
     onProgress?.('fetching');
     const problem = await fetchProgrammersProblem(parsed.lessonId);
 
+    // v1.8.0+: 프로그래머스는 LLM 호출 없이 cheerio + turndown으로 즉시 변환
+    // 한국어 원문이라 번역 불필요 → 정리만 (HTML → markdown + 메타 헤더)
+    // streaming 없이 즉시 결과 — onStream에 한 번 호출하여 UI 일관성 유지
     onProgress?.('translating');
-    const translation = await translateProblem(problem, onStream);
+    const translation = organizeProgrammersMarkdown(problem);
+    if (onStream) onStream(translation);
     const translationHtml = await renderMarkdown(translation);
 
     const result = { problem, translation, translationHtml };
