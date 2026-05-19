@@ -6,8 +6,8 @@ import { resetTranslatorClient } from '../services/translator';
 import { resetAnnotatorClient } from '../services/annotator';
 import { resetGithubClient, createRepoIfMissing, verifyConnection, fetchIndexFromGithub, updateRetrospective, migrateLegacyLeetCodeFolders } from '../services/github';
 import { fetchRecentAcceptedSubmission, hasAcceptedSubmission } from '../services/leetcode';
-import { fetchAtcoderSubmission } from '../services/atcoderSubmission';
-import { fetchCodeforcesSubmission } from '../services/codeforcesSubmission';
+import { fetchAtcoderSubmission, hasAtcoderAccepted } from '../services/atcoderSubmission';
+import { fetchCodeforcesSubmission, hasCodeforcesAccepted } from '../services/codeforcesSubmission';
 import { fetchProgrammersSubmissionFromWindow } from '../services/programmersSubmission';
 import { Problem } from '../types';
 import { renderMarkdown } from '../services/markdown';
@@ -352,37 +352,75 @@ export function registerIpcHandlers() {
     }
   });
 
-  // ── 업로드 직전 LeetCode Accepted submission 확인 ──
-  // true = Accepted 있음, false = 없음(submission 0 또는 fail만 있음),
-  // null = 확인 불가 (로그인/네트워크/API fail — silent skip)
-  ipcMain.handle('has-accepted-submission', async (_event, titleSlug: string) => {
-    const accepted = await hasAcceptedSubmission(titleSlug);
-    return { accepted };
+  // ── 업로드 직전 Accepted submission 확인 (LC / AC / CF) ──
+  // true = Accepted 있음, false = 없음, null = 확인 불가 (미로그인/API fail — silent skip)
+  // payload union — 플랫폼별 식별자 다름. PG는 호출 안 함 (사전 확인 미지원)
+  // string 인자도 backward-compat (legacy LeetCode 호출)
+  ipcMain.handle('has-accepted-submission', async (_event, payload: unknown) => {
+    try {
+      if (typeof payload === 'string') {
+        const accepted = await hasAcceptedSubmission(payload);
+        return { accepted };
+      }
+      const p = payload as
+        | { platform: 'LeetCode'; titleSlug: string }
+        | { platform: 'AtCoder'; contestId: string; taskId: string }
+        | { platform: 'Codeforces'; contestId: string; index: string };
+      if (p.platform === 'AtCoder') {
+        const accepted = await hasAtcoderAccepted(p.contestId, p.taskId);
+        return { accepted };
+      }
+      if (p.platform === 'Codeforces') {
+        const accepted = await hasCodeforcesAccepted(p.contestId, p.index);
+        return { accepted };
+      }
+      // default: LeetCode
+      const accepted = await hasAcceptedSubmission(
+        (p as { titleSlug: string }).titleSlug
+      );
+      return { accepted };
+    } catch {
+      return { accepted: null };
+    }
   });
 
   // ── Accepted 없을 때 사용자에게 native confirm — "그래도 업로드?" ──
-  // dialog.showMessageBox 사용 — Electron native modal (custom HTML 대비 단순/안정).
-  // "다시 묻지 않음" 체크박스 추가 — true면 renderer가 settings 토글 OFF로 전환.
-  ipcMain.handle('confirm-upload-without-accepted', async (event, titleSlug: string) => {
+  // 플랫폼별 문제 ID 표시. dialog.showMessageBox + "다시 묻지 않음" 체크박스.
+  ipcMain.handle('confirm-upload-without-accepted', async (event, payload: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return { proceed: false, dontAskAgain: false };
+
+    // payload — string (legacy LC titleSlug) 또는 { platform, label } 형태
+    let problemLabel = '';
+    let platformLabel = '원문 사이트';
+    if (typeof payload === 'string') {
+      problemLabel = payload;
+      platformLabel = 'LeetCode';
+    } else if (payload && typeof payload === 'object') {
+      const p = payload as { platform?: string; label?: string };
+      problemLabel = p.label || '';
+      if (p.platform === 'AtCoder') platformLabel = 'AtCoder';
+      else if (p.platform === 'Codeforces') platformLabel = 'Codeforces';
+      else if (p.platform === 'LeetCode') platformLabel = 'LeetCode';
+    }
+
     const result = await dialog.showMessageBox(win, {
       type: 'warning',
       buttons: ['취소', '그래도 업로드'],
       defaultId: 0,
       cancelId: 0,
-      title: 'LeetCode Accepted submission이 없어요',
-      message: `이 문제("${titleSlug}")에 Accepted submission이 없어요.`,
+      title: `${platformLabel} 통과 기록이 없어요`,
+      message: `이 문제("${problemLabel}")에 Accepted submission이 없어요.`,
       detail:
         'Solve Buddy는 통과한 풀이를 학습 자산화하는 도구입니다.\n\n' +
-        'LeetCode에서 먼저 풀이를 통과시키는 게 권장 흐름이지만, ' +
+        `${platformLabel}에서 먼저 풀이를 통과시키는 게 권장 흐름이지만, ` +
         '본인이 다른 곳에서 풀었거나 의도된 업로드라면 그대로 진행 가능합니다.\n\n' +
         '풀이 레포 관리는 사용자 자유.',
       checkboxLabel: '다시 묻지 않음 (설정에서 언제든 다시 켤 수 있음)',
       checkboxChecked: false,
     });
     return {
-      proceed: result.response === 1, // 1 = "그래도 업로드"
+      proceed: result.response === 1,
       dontAskAgain: !!result.checkboxChecked,
     };
   });

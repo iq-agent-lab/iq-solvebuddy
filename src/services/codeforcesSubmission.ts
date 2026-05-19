@@ -51,6 +51,47 @@ function isLoggedOut(html: string): boolean {
   return /href="\/enter[^"]*"\s+[^>]*>\s*Enter\s*<\/a>/i.test(html);
 }
 
+/**
+ * Codeforces Accepted 사전 확인 — 풀이 업로드 전 AC submission 있는지 가벼운 체크.
+ * /contest/{N}/my 페이지에서 problem index 매칭 + verdict-accepted 행이 1개 이상이면 OK.
+ *
+ * @returns true = AC 있음 / false = AC 없음 / null = 확인 불가
+ */
+export async function hasCodeforcesAccepted(
+  contestId: string,
+  index: string
+): Promise<boolean | null> {
+  const myUrl = `${BASE_URL}/contest/${contestId}/my`;
+  let html: string;
+  try {
+    html = await fetchHtmlViaBrowser(myUrl, PARTITION);
+  } catch {
+    return null;
+  }
+  if (isLoggedOut(html)) return null;
+
+  const $ = cheerio.load(html);
+  let found = false;
+  $('table.status-frame-datatable tr').each((_i, tr) => {
+    if (found) return;
+    const $tr = $(tr);
+    if (!$tr.attr('data-submission-id')) return;
+    const hasIndex =
+      $tr.find(`a[href*="/contest/${contestId}/problem/${index}"]`).length > 0 ||
+      $tr.find('td').filter((_j, td) =>
+        new RegExp(`^${index}\\.\\s+`, 'i').test($(td).text().trim())
+      ).length > 0;
+    if (!hasIndex) return;
+    const accepted =
+      $tr.find('span.verdict-accepted').length > 0 ||
+      $tr.find('.status-cell, td').filter((_j, td) =>
+        /\baccepted\b/i.test($(td).text())
+      ).length > 0;
+    if (accepted) found = true;
+  });
+  return found;
+}
+
 // submission detail 페이지에서 코드 추출
 // CF는 `<pre id="program-source-text">` 안에 코드. 일부 페이지는 `<ol><li>` 라인 wrapping
 function extractCode($: cheerio.CheerioAPI): string {

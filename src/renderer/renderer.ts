@@ -1487,32 +1487,64 @@ function showErrorPlain(message: string): void {
 }
 
 async function performUpload(): Promise<void> {
-  // Accepted check (settings에 켜져 있으면, default ON)
-  // 본 도구 핵심 가치: 통과한 풀이 학습 자산화. Accepted 없는 코드 commit 막기.
-  // 단 override 허용 — 다른 OJ / 오프라인 풀이 / API fail 등 예외 케이스 대응.
+  // Accepted check (settings에 켜져 있으면, default ON) — LC/AC/CF 지원
+  // PG는 사전 확인 미지원 (AC 개념 없음 + API 없음) → skip
+  // 본 도구 핵심 가치: 통과한 풀이 학습 자산화. 단 override 허용 (다른 OJ / 오프라인 / API fail 등 대응)
   if (getAcceptedCheck() && state.problem) {
-    setStatus('LeetCode에서 Accepted 확인 중...', 'busy');
-    setButtonLoading('upload-btn', 'Accepted 확인 중...');
-    try {
-      const slug = state.problem.titleSlug;
-      const r = await window.api.hasAcceptedSubmission(slug);
-      // accepted === null이면 silent skip (로그인 안 됨 / API fail 등 — false negative 방지)
-      if (r.accepted === false) {
-        const { proceed, dontAskAgain } = await window.api.confirmUploadWithoutAccepted(slug);
-        // "다시 묻지 않음" 체크 시 — proceed/cancel 무관하게 토글 OFF (사용자 명시 선택)
-        if (dontAskAgain) {
-          setAcceptedCheck(false);
-          $input('setting-accepted-check').checked = false;
-        }
-        if (!proceed) {
-          setStatus('업로드 취소됨 — LeetCode에서 먼저 풀이 통과 권장', 'error');
-          resetButton('upload-btn', 'AI 회고 생성 후 GitHub에 업로드');
-          return;
-        }
-        // 사용자가 명시적으로 "그래도 업로드" 선택 → 진행
+    const platform = state.problem.platform;
+    // payload 구성 — 플랫폼별 식별자 다름. PG면 skip
+    let payload:
+      | { platform: 'LeetCode'; titleSlug: string }
+      | { platform: 'AtCoder'; contestId: string; taskId: string }
+      | { platform: 'Codeforces'; contestId: string; index: string }
+      | null = null;
+    let problemLabel = '';
+    let platName = 'LeetCode';
+    if (!platform || platform === 'LeetCode') {
+      payload = { platform: 'LeetCode', titleSlug: state.problem.titleSlug };
+      problemLabel = state.problem.titleSlug;
+      platName = 'LeetCode';
+    } else if (platform === 'AtCoder') {
+      const ac = state.problem as { contestId?: string; taskId?: string };
+      if (ac.contestId && ac.taskId) {
+        payload = { platform: 'AtCoder', contestId: ac.contestId, taskId: ac.taskId };
+        problemLabel = ac.taskId;
+        platName = 'AtCoder';
       }
-    } catch {
-      // check 자체 실패 — silent skip (정상 흐름 막지 않음)
+    } else if (platform === 'Codeforces') {
+      const cf = state.problem as { contestId?: string; index?: string };
+      if (cf.contestId && cf.index) {
+        payload = { platform: 'Codeforces', contestId: cf.contestId, index: cf.index };
+        problemLabel = `${cf.contestId}${cf.index}`;
+        platName = 'Codeforces';
+      }
+    }
+    // platform === 'Programmers'면 payload === null → check skip
+
+    if (payload) {
+      setStatus(`${platName}에서 Accepted 확인 중...`, 'busy');
+      setButtonLoading('upload-btn', 'Accepted 확인 중...');
+      try {
+        const r = await window.api.hasAcceptedSubmission(payload);
+        // accepted === null이면 silent skip (로그인 안 됨 / API fail 등 — false negative 방지)
+        if (r.accepted === false) {
+          const { proceed, dontAskAgain } = await window.api.confirmUploadWithoutAccepted({
+            platform: payload.platform,
+            label: problemLabel,
+          });
+          if (dontAskAgain) {
+            setAcceptedCheck(false);
+            $input('setting-accepted-check').checked = false;
+          }
+          if (!proceed) {
+            setStatus(`업로드 취소됨 — ${platName}에서 먼저 풀이 통과 권장`, 'error');
+            resetButton('upload-btn', 'AI 회고 생성 후 GitHub에 업로드');
+            return;
+          }
+        }
+      } catch {
+        // check 자체 실패 — silent skip (정상 흐름 막지 않음)
+      }
     }
   }
 
