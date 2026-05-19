@@ -213,7 +213,7 @@ ${problem.content}
 
 다음 형식으로만 출력해줘 (코드 블록이나 추가 설명 없이 바로 마크다운 본문):
 
-# ${problem.contestId}${problem.index}. ${problem.title}
+# ${problem.contestId} ${problem.index}. ${problem.title}
 
 > **${problem.difficulty}** · CF ${problem.contestId}${tagInHeader} · [원문](${problem.url})
 

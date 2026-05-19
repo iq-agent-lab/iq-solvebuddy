@@ -25,6 +25,16 @@ function cachePath(platform: CachePlatform, key: string): string {
   return path.join(cacheDir(), `${safeKey}.json`);
 }
 
+// 캐시된 결과의 metadata 품질이 의심스러우면 cache miss로 처리해 재fetch 유도
+// v1.6.2 이전 캐시된 CF/PG는 rating/level이 '?' / 'Lv ?'로 저장됐을 수 있음
+// → 사용자가 수동 캐시 삭제 안 해도 다음 fetch 시 자동 refresh
+function looksStale(result: FetchProblemResult): boolean {
+  const p = result.problem;
+  const diff = (p as { difficulty?: string }).difficulty || '';
+  if (diff === '?' || diff === 'Lv ?' || diff === '?점' || diff === '?점 · 난이도 ≤0') return true;
+  return false;
+}
+
 export async function readTranslationCache(
   platform: CachePlatform,
   key: string
@@ -33,6 +43,10 @@ export async function readTranslationCache(
     const data = await fs.readFile(cachePath(platform, key), 'utf-8');
     const parsed = JSON.parse(data);
     if (!parsed.problem || !parsed.translation || !parsed.translationHtml) {
+      return null;
+    }
+    if (looksStale(parsed as FetchProblemResult)) {
+      // 옛 fix 이전 캐시 — 자동 refresh
       return null;
     }
     return parsed as FetchProblemResult;

@@ -108,12 +108,15 @@ function extractStatement($: cheerio.CheerioAPI): string {
 // rating: '*1500' / '★1500' / 'difficulty: 1500' 등 다양한 표기
 // algorithmic tags: 'greedy', 'dp', 'implementation', ... (rating 매칭 안 된 것)
 //
-// 페이지 구조 차이 대응: title 속성 + lenient pattern + 여러 영역 검색
-function extractRatingAndTags($: cheerio.CheerioAPI): { rating: string; tags: string[] } {
+// 페이지 구조 차이 대응:
+//   1) cheerio .tag-box 순회 (text + title attr 둘 다)
+//   2) raw HTML regex fallback — cheerio가 못 잡는 nested anchor 등
+//   3) page-wide pure digit span 검사 (last resort)
+function extractRatingAndTags($: cheerio.CheerioAPI, rawHtml: string): { rating: string; tags: string[] } {
   const tags: string[] = [];
   let rating = '?';
 
-  // 모든 .tag-box 순회 — sidebar / 부가 박스 / problem-statement
+  // 1) 모든 .tag-box 순회
   $('.tag-box').each((_i, el) => {
     const $el = $(el);
     const t = $el.text().trim();
@@ -121,12 +124,10 @@ function extractRatingAndTags($: cheerio.CheerioAPI): { rating: string; tags: st
     const fullText = `${t} ${title}`.toLowerCase();
     if (!t) return;
 
-    // 1) rating: text의 "*1500" / "★1500" / title의 "Difficulty: 1500"
-    //    별표/별 기호 optional — 일부 페이지는 숫자만 표시
+    // rating: text의 "*1500" / "★1500" / title의 "Difficulty: 1500"
     let ratingMatch =
       t.match(/[\*★]\s*(\d{3,4})/) ||
       title.match(/(?:difficulty|rating)\s*[:=]?\s*(\d{3,4})/i);
-    // text가 순수 숫자만 (3~4자리)이고 'difficulty' 힌트 있으면 rating으로
     if (!ratingMatch && /^\d{3,4}$/.test(t) && /difficulty|rating/i.test(fullText)) {
       ratingMatch = t.match(/(\d{3,4})/);
     }
@@ -135,11 +136,32 @@ function extractRatingAndTags($: cheerio.CheerioAPI): { rating: string; tags: st
       return;
     }
 
-    // 2) algorithmic tag: 알파/공백/하이픈, 길이 가드, rating 패턴 아님
+    // algorithmic tag: 알파/공백/하이픈, 길이 가드, rating 패턴 아님
     if (t.length > 0 && t.length < 40 && /^[a-z][a-z0-9\s\-]+$/i.test(t)) {
       tags.push(t.toLowerCase());
     }
   });
+
+  // 2) cheerio가 못 잡은 경우 — raw HTML regex
+  // CF는 종종 <span class="tag-box"><a href="/problemset?tags=...">*1500</a></span> 형태
+  // cheerio가 anchor 내부 text 추출이 안 되는 경우 있어 raw regex로 fallback
+  if (rating === '?') {
+    const m =
+      rawHtml.match(/class="[^"]*tag-box[^"]*"[^>]*>[\s\S]{0,200}?\*\s*(\d{3,4})/i) ||
+      rawHtml.match(/title="\s*(?:difficulty|rating)[^"]*?(\d{3,4})\s*"/i);
+    if (m) rating = `★${m[1]}`;
+  }
+
+  // 3) 마지막 fallback — page-wide '*NNN' 패턴 단독 (false positive 위험 낮음)
+  // 별표 + 3~4 digit이 단독으로 페이지에 있을 가능성은 거의 rating
+  if (rating === '?') {
+    const m = rawHtml.match(/(?:^|\s|>)\*(\d{3,4})(?:<|\s|$)/);
+    if (m) {
+      const v = parseInt(m[1], 10);
+      // CF rating 범위 800~3500
+      if (v >= 800 && v <= 3500) rating = `★${m[1]}`;
+    }
+  }
 
   return { rating, tags };
 }
@@ -193,7 +215,7 @@ export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise
     );
   }
 
-  const { rating, tags } = extractRatingAndTags($);
+  const { rating, tags } = extractRatingAndTags($, html);
   const exampleTestcases = extractExamples($);
 
   // tag → LeetCodeTag 형태로 변환 (Problem union이 같은 구조 공유)

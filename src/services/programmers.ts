@@ -94,12 +94,30 @@ function extractContent($: cheerio.CheerioAPI): string {
   return '';
 }
 
-// 난이도 — 다양한 selector 시도 + page HTML 안의 inline data 패턴까지
-// 프로그래머스 페이지가 SPA(Nuxt) 기반이라 정적 HTML엔 selector가 안 잡힐 수 있음
-// → script 안의 inline JSON state에서 level 추출
+// 난이도 — 프로그래머스 실제 페이지 구조 기반 다중 검사
+// PG는 별 아이콘 N개로 level 표시 — `.level-active` 클래스 count가 가장 정확한 source
+// SPA 페이지라 정적 HTML 일부는 client render인데 별 표시는 server-side rendered인 경우 많음
 function extractDifficulty($: cheerio.CheerioAPI, rawHtml: string): string {
-  // 1) 알려진 DOM selector들
-  const candidates = [
+  // 1) 별 아이콘 count — 프로그래머스 UI 핵심 (Lv N = active 별 N개)
+  // 다양한 컨테이너 + active class 변형 시도
+  const starContainers = ['.level', '.challenge-level', '.lesson-level', '.difficulty-stars'];
+  for (const cont of starContainers) {
+    const $cont = $(cont).first();
+    if (!$cont.length) continue;
+    // active 별 count — .level-active / [class*=active] / [class*=filled]
+    const activeCount = $cont.find('.level-active, [class*="active"]:not(.inactive), [class*="filled"]').length;
+    if (activeCount > 0 && activeCount <= 5) {
+      return `Lv ${activeCount}`;
+    }
+  }
+  // page-wide level-active 검색 (컨테이너 없이)
+  const pageActive = $('.level-active').length;
+  if (pageActive > 0 && pageActive <= 5) {
+    return `Lv ${pageActive}`;
+  }
+
+  // 2) 텍스트 selector (legacy 표기)
+  const textCandidates = [
     '.challenge-level',
     '.lesson-level',
     '.level',
@@ -110,12 +128,11 @@ function extractDifficulty($: cheerio.CheerioAPI, rawHtml: string): string {
     '[data-level]',
   ];
   let raw = '';
-  for (const sel of candidates) {
+  for (const sel of textCandidates) {
     const $el = $(sel).first();
     const dataLevel = $el.attr('data-level');
-    if (dataLevel) {
-      raw = `level ${dataLevel}`;
-      break;
+    if (dataLevel && /^\d$/.test(dataLevel)) {
+      return `Lv ${dataLevel}`;
     }
     const t = $el.text().trim();
     if (t && /\d/.test(t)) {
@@ -123,22 +140,36 @@ function extractDifficulty($: cheerio.CheerioAPI, rawHtml: string): string {
       break;
     }
   }
-  // 2) 클래스명에 level 정보 (예: class="level-3")
+
+  // 3) 클래스명에 level 정보 (예: class="level-3")
   if (!raw) {
     const levelClass = $('[class*="level-"]').first().attr('class');
     if (levelClass) {
-      const cm = levelClass.match(/level-(\d)/);
+      const cm = levelClass.match(/level-(\d)\b/);
       if (cm) raw = `level ${cm[1]}`;
     }
   }
-  // 3) page HTML 안의 inline JSON — '"level":N' / '"difficulty":N' 패턴
-  // SPA initial state. false positive 방지 위해 lesson/challenge 컨텍스트 근처에서만
+
+  // 4) page HTML 안의 inline JSON — '"level":N' / '"difficulty":N' 패턴
+  //    SPA initial state. 더 lenient하게: 0이 아닌 1~5만 인정
   if (!raw) {
-    const m = rawHtml.match(/"level"\s*:\s*(\d+)/);
-    if (m && parseInt(m[1], 10) > 0 && parseInt(m[1], 10) < 10) {
-      raw = `level ${m[1]}`;
+    const patterns = [
+      /"level"\s*:\s*(\d+)/,
+      /"difficulty"\s*:\s*(\d+)/,
+      /\blevel\s*[:=]\s*(\d+)/i,
+    ];
+    for (const p of patterns) {
+      const m = rawHtml.match(p);
+      if (m) {
+        const v = parseInt(m[1], 10);
+        if (v >= 1 && v <= 5) {
+          raw = `level ${v}`;
+          break;
+        }
+      }
     }
   }
+
   const m = raw.match(/(?:level|lv\.?|레벨)\s*(\d)/i);
   if (m) return `Lv ${m[1]}`;
   if (raw) return raw;
