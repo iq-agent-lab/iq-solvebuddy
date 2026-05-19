@@ -102,7 +102,7 @@ npm run release            # version patch + push + GitHub Actions
 | 멀티 플랫폼 인덱스 = `<details>` 섹션 | 유지 | 플랫폼별 marker (`<!-- iq-leetbuddy:LeetCode:start -->` 등). LeetCode default 펼침, 나머지는 접힘. legacy marker(`iq-leetbuddy:problems`)는 parseExistingIndex가 자동으로 LeetCode platform으로 변환 — backward compat |
 | 자동 마이그레이션 = recursive tree mv | 유지 | recursive tree get → legacy 패턴(`^\d+-[a-z0-9-]+/`) 필터 → createTree에 (sha:null 삭제 + LeetCode/ 새 path 추가) + 새 README → 단일 commit. 사용자 명시 클릭 후만 실행 (stats 모달 버튼). 이미 마이그레이션이면 noop |
 | 이름 = `iq-solvebuddy` (v1.0+) | 유지 | v0.x~v0.9는 `iq-leetbuddy`. v1.0 출시(프로그래머스 추가)와 함께 rename. **변경**: GitHub repo URL / .app productName / 창 title / 트레이 메뉴 / Releases API URL / README/CLAUDE.md. **유지** (사용자 데이터 손실 방지): userData 폴더명 (`app.setName('iq-leetbuddy')` 명시 — invisible) / localStorage key prefix (`iq-leetbuddy:draft/theme/...`) / GitHub 풀이 레포 marker (`<!-- iq-leetbuddy:LeetCode:* -->`). package.json의 `name`도 `iq-leetbuddy` 유지 (npm-level, fallback for setName 안정성) |
-| Programmers = 정리 모드 (번역 X) | 유지 | 본문이 이미 한국어. translator.ts에 `buildProgrammersPrompt` 분기 — "번역 금지" 명시 + HTML 태그만 마크다운 변환. Problem union discriminator (`platform === 'Programmers'`)로 dispatch. SQL 문제도 동일 흐름 |
+| Programmers = 정리 모드 (LLM 호출 X, v1.8.0+) | 유지 | 본문이 이미 한국어 → 번역 불필요. v1.0~v1.7은 LLM이 "번역 금지" prompt로 정리만 했지만 LLM 호출 자체가 5초+ 비용. v1.8.0부터 `programmersOrganize.ts`가 cheerio + turndown으로 즉시 변환 (~10ms). 메타 헤더는 직접 생성. LeetCode/AtCoder/CF는 번역 필요라 LLM 유지 |
 | Programmers fetch = HTML scraping (cheerio) | 유지 | 공식 API 없음. `school.programmers.co.kr/learn/courses/30/lessons/{lessonId}` HTML fetch + cheerio로 selector 시도. 다중 selector fallback (사이트 업데이트 대응). Lv 3+ 로그인 필요는 친절 에러 — Phase 2.5에서 `persist:programmers` 임베드 활용 예정 |
 | Programmers path = `Programmers/{lessonId}-{slug}/` | 유지 | LeetCode와 달리 frontendId 없으니 lessonId 사용. slug는 한국어 보존 (cheerio slugify가 한글+dash). titleSlug가 한국어라도 git path는 UTF-8 안전. 인덱스 entry의 problemId = lessonId |
 | 캐시 key = platform prefix | 유지 | 같은 식별자라도 플랫폼 간 분리. LeetCode는 `{slug}.json` (legacy 호환), 나머지는 `{platform-lower}-{key}.json` (예: `programmers-12345.json`, `atcoder-abc300_a.json`). 함수 시그니처: `readTranslationCache(platform, key)` |
@@ -236,6 +236,7 @@ upload-info에 폴더 + commit URL + "다음 문제" 버튼
 | `src/main/settings.ts` | `.env` 읽기/쓰기, `MANAGED_KEYS`, secret-skip 로직 |
 | `src/services/leetcode.ts` | LeetCode GraphQL fetch (`questionData`) |
 | `src/services/programmers.ts` | 프로그래머스 HTML scraping (cheerio, v1.0+) |
+| `src/services/programmersOrganize.ts` | 프로그래머스 HTML → markdown 변환 (turndown + GFM, v1.8+) — LLM 호출 없이 즉시 |
 | `src/services/atcoder.ts` | AtCoder HTML scraping (cheerio, v1.1+). 영어/일본어 statement |
 | `src/services/codeforces.ts` | Codeforces HTML scraping (cheerio, v1.2+). `.problem-statement` 전체 + rating/tags 분리 |
 | `src/services/atcoderModels.ts` | AtCoder difficulty rating 캐시 (kenkoooo.com API, v1.3+). 24h TTL + 메모리 캐시 + 부팅 prewarm |
