@@ -1,21 +1,20 @@
-// 프로그래머스 submission 자동 fetch — 임베드 윈도우의 ace editor 직접 추출
+// 프로그래머스 submission 자동 fetch — 2단계 fallback:
 //
-// LeetCode/AtCoder/CF와 다른 패턴:
+// 1순위: 임베드 윈도우의 ace editor 직접 추출 (가장 정확 — 사용자가 작성 중인 코드 그대로)
+//        webContents.executeJavaScript로 ace.edit(el).getValue() 호출
+//
+// 2순위: 페이지 HTML에서 사용자 마지막 코드 추출 (임베드 없거나 다른 페이지일 때)
+//        로그인 cookies로 fetch하면 페이지 HTML에 사용자 마지막 작성 코드가 inject됨
+//        — programmers.ts의 fetchProgrammersHtml + extractCodeSnippets 재사용
+//
+// LeetCode/AtCoder/CF와 다른 점:
 //   - 공식 submission API 없음
-//   - 문제 페이지 HTML에 사용자 마지막 작성 코드가 들어있지 않음 (서버 사이드 inject 없음)
-//   - 사용자가 임베드 윈도우에서 코드 작성한 상태 그대로 ace editor에 있음
-//
-// 따라서 임베드 윈도우의 webContents에서 JS 실행 → ace editor.getValue() 직접 추출.
-// 사용자 workflow:
-//   1. 헤더 프로그래머스 버튼으로 임베드 열기
-//   2. 로그인 + 문제 페이지로 이동
-//   3. 코드 작성 (또는 통과)
-//   4. 메인 윈도우 돌아와서 step-3 "↩ 프로그래머스에서 가져오기"
-//   5. 임베드 윈도우의 ace editor 값 자동 fill
-//
-// 임베드 윈도우가 없거나 다른 페이지(홈 등)에 있으면 친절 에러.
+//   - "통과한" 코드와 "마지막 작성" 코드의 구분 어려움 (프로그래머스는 채점 기록 페이지 따로 있지만 비공식 API)
+//   - 단순화: 마지막 작성 코드(통과 여부 무관)를 그대로 가져옴
 
 import { BrowserWindow } from 'electron';
+import * as cheerio from 'cheerio';
+import { session } from 'electron';
 
 // ace editor의 mode ID → 우리 langSlug 매핑
 // 프로그래머스 ace mode 예: "ace/mode/python", "ace/mode/java", "ace/mode/c_cpp"
@@ -40,85 +39,156 @@ function mapAceMode(aceMode: string): string {
   return mode;
 }
 
+// 페이지 HTML fetch — programmers.ts와 동일 cookies + textarea 추출 패턴
+// 임베드 윈도우 없거나 ace editor 비었을 때 fallback
+async function fetchPageCodeViaCookies(
+  lessonId: string
+): Promise<{ code: string; langSlug: string; langName: string } | null> {
+  try {
+    const ses = session.fromPartition('persist:programmers');
+    const cookies = await ses.cookies.get({ domain: '.programmers.co.kr' });
+    if (cookies.length === 0) {
+      const alt = await ses.cookies.get({ domain: 'programmers.co.kr' });
+      cookies.push(...alt);
+    }
+    if (cookies.length === 0) return null;
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+
+    const url = `https://school.programmers.co.kr/learn/courses/30/lessons/${lessonId}`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Cookie: cookieHeader,
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const candidates = [
+      'textarea#code-editor',
+      'textarea[name="code"]',
+      'textarea.code',
+      'textarea#code',
+    ];
+    let code = '';
+    for (const sel of candidates) {
+      const t = $(sel).first().text();
+      if (t && t.trim()) {
+        code = t;
+        break;
+      }
+    }
+    if (!code.trim()) return null;
+
+    // lang heuristic
+    const lower = code.trim();
+    let langSlug = 'python3';
+    let langName = 'Python3';
+    if (/^\s*#include\s*<bits\/stdc\+\+/.test(lower) || /using\s+namespace\s+std\b/.test(lower) || /vector\s*</.test(lower)) {
+      langSlug = 'cpp';
+      langName = 'C++';
+    } else if (/^\s*#include\s*<\w+\.h>/m.test(lower)) {
+      langSlug = 'c';
+      langName = 'C';
+    } else if (/^\s*def\s+solution/m.test(lower)) {
+      langSlug = 'python3';
+      langName = 'Python3';
+    } else if (/class\s+Solution\b/.test(lower) || /public\s+class/.test(lower)) {
+      langSlug = 'java';
+      langName = 'Java';
+    } else if (/^\s*function\s+solution/m.test(lower)) {
+      langSlug = 'javascript';
+      langName = 'JavaScript';
+    } else if (/^\s*fun\s+solution/m.test(lower)) {
+      langSlug = 'kotlin';
+      langName = 'Kotlin';
+    } else if (/^\s*SELECT\b/im.test(lower) || /^\s*WITH\b/im.test(lower)) {
+      langSlug = 'mysql';
+      langName = 'SQL';
+    }
+    return { code, langSlug, langName };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 임베드 프로그래머스 윈도우의 현재 페이지에서 ace editor 값 + 언어 추출.
+ * 프로그래머스 submission 추출 — 2단계 fallback.
  *
- * @param win 임베드 윈도우 (없으면 null)
- * @param lessonId 현재 풀고 있는 lessonId — URL 검증용
+ * @param win 임베드 윈도우 (없으면 cookies fallback)
+ * @param lessonId 현재 풀고 있는 lessonId
  */
 export async function fetchProgrammersSubmissionFromWindow(
   win: BrowserWindow | null,
   lessonId: string
 ): Promise<{ code: string; langSlug: string; langName: string }> {
+  // 1순위: 임베드 윈도우의 ace editor 직접 추출 (해당 lessonId 페이지 떠있어야)
+  const tryAceEditor = async (): Promise<{ code: string; langSlug: string; langName: string } | null> => {
+    if (!win || win.isDestroyed()) return null;
+    const currentUrl = win.webContents.getURL();
+    const urlPattern = new RegExp(`/learn/courses/\\d+/lessons/${lessonId}(?:[/?#]|$)`);
+    if (!urlPattern.test(currentUrl)) return null;
+
+    try {
+      const extracted = (await win.webContents.executeJavaScript(
+        `
+        (function() {
+          try {
+            if (typeof window.ace === 'undefined') {
+              return { code: '', mode: '', error: 'ace 미로드' };
+            }
+            var candidates = ['.ace_editor', '#code-editor', '#editor', 'div[id^="editor"]'];
+            var el = null;
+            for (var i = 0; i < candidates.length; i++) {
+              el = document.querySelector(candidates[i]);
+              if (el) break;
+            }
+            if (!el) return { code: '', mode: '', error: '에디터 DOM 없음' };
+            var editor = window.ace.edit(el);
+            var sess = editor.getSession();
+            var code = editor.getValue() || '';
+            var mode = sess.getMode().$id || '';
+            return { code: code, mode: mode, error: '' };
+          } catch (e) {
+            return { code: '', mode: '', error: String((e && e.message) || e) };
+          }
+        })()
+        `,
+        true
+      )) as { code: string; mode: string; error: string };
+      if (extracted.error || !extracted.code.trim()) return null;
+      const langSlug = mapAceMode(extracted.mode || '');
+      return { code: extracted.code, langSlug, langName: extracted.mode || langSlug };
+    } catch {
+      return null;
+    }
+  };
+
+  const aceResult = await tryAceEditor();
+  if (aceResult) return aceResult;
+
+  // 2순위: 페이지 HTML cookies fetch (로그인 + 마지막 작성 코드 inject)
+  const pageResult = await fetchPageCodeViaCookies(lessonId);
+  if (pageResult) return pageResult;
+
+  // 둘 다 실패 — 가능한 원인별 친절 에러
   if (!win || win.isDestroyed()) {
     throw new Error(
-      `프로그래머스 임베드 윈도우가 열려있지 않아요 — 헤더 프로그래머스 버튼으로 먼저 열고 ${lessonId} 문제 페이지로 이동해주세요`
+      `프로그래머스 코드를 가져올 수 없어요. 헤더 프로그래머스 버튼으로 임베드 윈도우 열고 ${lessonId} 문제 페이지에서 코드 작성 후 다시 시도해주세요 (또는 임베드에서 한 번 로그인이라도 해주세요 — 페이지 HTML에서 마지막 코드 추출 가능)`
     );
   }
-
   const currentUrl = win.webContents.getURL();
-  // 현재 임베드가 해당 lessonId의 문제 페이지인지 검증
-  // URL 형태: /learn/courses/30/lessons/{lessonId} 또는 ?... 등
   const urlPattern = new RegExp(`/learn/courses/\\d+/lessons/${lessonId}(?:[/?#]|$)`);
   if (!urlPattern.test(currentUrl)) {
     throw new Error(
-      `현재 임베드 윈도우가 ${lessonId} 문제 페이지에 있지 않아요 — 임베드에서 해당 문제로 이동 후 다시 시도해주세요`
+      `임베드 윈도우가 ${lessonId} 문제 페이지에 없고 cookies fetch도 실패했어요. 임베드에서 ${lessonId} 페이지로 이동 후 다시 시도해주세요`
     );
   }
-
-  // executeJavaScript로 ace editor 값 추출
-  // ace.edit(el)은 같은 el에 두 번 호출해도 안전 (싱글톤 캐시)
-  // 페이지가 ace 라이브러리 로드 안 했으면 빈 결과 → 친절 에러
-  const extracted = (await win.webContents.executeJavaScript(
-    `
-    (function() {
-      try {
-        if (typeof window.ace === 'undefined') {
-          return { code: '', mode: '', error: 'ace 미로드' };
-        }
-        // 페이지의 ace editor div — 여러 candidate 시도
-        var candidates = [
-          '.ace_editor',
-          '#code-editor',
-          '#editor',
-          'div[id^="editor"]',
-        ];
-        var el = null;
-        for (var i = 0; i < candidates.length; i++) {
-          el = document.querySelector(candidates[i]);
-          if (el) break;
-        }
-        if (!el) {
-          return { code: '', mode: '', error: '에디터 DOM 없음' };
-        }
-        var editor = window.ace.edit(el);
-        var session = editor.getSession();
-        var code = editor.getValue() || '';
-        var mode = session.getMode().$id || '';
-        return { code: code, mode: mode, error: '' };
-      } catch (e) {
-        return { code: '', mode: '', error: String((e && e.message) || e) };
-      }
-    })()
-    `,
-    true
-  )) as { code: string; mode: string; error: string };
-
-  if (extracted.error) {
-    throw new Error(
-      `프로그래머스 ace editor 접근 실패: ${extracted.error}. 문제 페이지를 새로고침 후 다시 시도해주세요`
-    );
-  }
-  if (!extracted.code.trim()) {
-    throw new Error(
-      `프로그래머스 ace editor가 비어있어요 — 코드를 작성한 상태에서 다시 시도해주세요`
-    );
-  }
-
-  const langSlug = mapAceMode(extracted.mode || '');
-  return {
-    code: extracted.code,
-    langSlug,
-    langName: extracted.mode || langSlug,
-  };
+  throw new Error(
+    `프로그래머스 ace editor 또는 페이지에서 코드를 찾지 못했어요 — 임베드에서 코드 작성 후 다시 시도하거나, 통과한 풀이가 있다면 페이지 새로고침 후 재시도`
+  );
 }

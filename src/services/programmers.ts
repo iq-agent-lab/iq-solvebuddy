@@ -94,29 +94,49 @@ function extractContent($: cheerio.CheerioAPI): string {
   return '';
 }
 
-// 난이도 — "level 3" / "Lv. 3" 등 다양한 표기 → "Lv 3"
-function extractDifficulty($: cheerio.CheerioAPI): string {
+// 난이도 — 다양한 selector 시도 + page HTML 안의 inline data 패턴까지
+// 프로그래머스 페이지가 SPA(Nuxt) 기반이라 정적 HTML엔 selector가 안 잡힐 수 있음
+// → script 안의 inline JSON state에서 level 추출
+function extractDifficulty($: cheerio.CheerioAPI, rawHtml: string): string {
+  // 1) 알려진 DOM selector들
   const candidates = [
     '.challenge-level',
     '.lesson-level',
     '.level',
     'span.level-text',
     'div.lesson-summary .level',
+    '.challenge-meta .level',
+    '.lesson-summary dd',
+    '[data-level]',
   ];
   let raw = '';
   for (const sel of candidates) {
-    const t = $(sel).first().text().trim();
-    if (t) {
+    const $el = $(sel).first();
+    const dataLevel = $el.attr('data-level');
+    if (dataLevel) {
+      raw = `level ${dataLevel}`;
+      break;
+    }
+    const t = $el.text().trim();
+    if (t && /\d/.test(t)) {
       raw = t;
       break;
     }
   }
-  // 클래스명 자체에 level 정보가 있는 경우 (예: class="level-3")
+  // 2) 클래스명에 level 정보 (예: class="level-3")
   if (!raw) {
-    const levelClass = $('[class*="level-"]').attr('class');
+    const levelClass = $('[class*="level-"]').first().attr('class');
     if (levelClass) {
       const cm = levelClass.match(/level-(\d)/);
       if (cm) raw = `level ${cm[1]}`;
+    }
+  }
+  // 3) page HTML 안의 inline JSON — '"level":N' / '"difficulty":N' 패턴
+  // SPA initial state. false positive 방지 위해 lesson/challenge 컨텍스트 근처에서만
+  if (!raw) {
+    const m = rawHtml.match(/"level"\s*:\s*(\d+)/);
+    if (m && parseInt(m[1], 10) > 0 && parseInt(m[1], 10) < 10) {
+      raw = `level ${m[1]}`;
     }
   }
   const m = raw.match(/(?:level|lv\.?|레벨)\s*(\d)/i);
@@ -125,20 +145,140 @@ function extractDifficulty($: cheerio.CheerioAPI): string {
   return 'Lv ?';
 }
 
+// starter code 한 줄로 lang 추정 — 페이지에 lang selector 정보 없을 때 fallback
+// 프로그래머스 페이지가 SPA라 정적 HTML엔 lang state 노출 X
+function detectLangFromCode(code: string): { lang: string; langSlug: string } {
+  const trimmed = code.trim();
+  // C/C++: #include 패턴
+  if (/^\s*#include\s*<bits\/stdc\+\+/.test(trimmed)) return { lang: 'C++', langSlug: 'cpp' };
+  if (/using\s+namespace\s+std\b/.test(trimmed) || /vector\s*<\s*\w+\s*>/.test(trimmed) || /std::/.test(trimmed)) {
+    return { lang: 'C++', langSlug: 'cpp' };
+  }
+  if (/^\s*#include\s*<\w+\.h>/m.test(trimmed)) {
+    // <stdio.h> 등 순수 C 헤더 — C++ 키워드 없으면 C
+    return { lang: 'C', langSlug: 'c' };
+  }
+  if (/^\s*#include/.test(trimmed)) return { lang: 'C++', langSlug: 'cpp' };
+  // Python
+  if (/^\s*def\s+solution\s*\(/m.test(trimmed) || /^\s*from\s+\w+\s+import/m.test(trimmed) || /^\s*import\s+\w+/m.test(trimmed)) {
+    return { lang: 'Python3', langSlug: 'python3' };
+  }
+  // Java
+  if (/class\s+Solution\b/.test(trimmed) && /public\s+\w+\s+solution/.test(trimmed)) {
+    return { lang: 'Java', langSlug: 'java' };
+  }
+  if (/public\s+class\s+/.test(trimmed)) return { lang: 'Java', langSlug: 'java' };
+  // JavaScript
+  if (/^\s*function\s+solution/m.test(trimmed) || /^\s*const\s+solution\s*=/m.test(trimmed)) {
+    return { lang: 'JavaScript', langSlug: 'javascript' };
+  }
+  // Kotlin
+  if (/^\s*fun\s+solution/m.test(trimmed) || /^\s*import\s+kotlin\./m.test(trimmed)) {
+    return { lang: 'Kotlin', langSlug: 'kotlin' };
+  }
+  // Swift
+  if (/^\s*func\s+solution.*->\s*\w+/m.test(trimmed) || /^\s*import\s+Foundation/m.test(trimmed)) {
+    return { lang: 'Swift', langSlug: 'swift' };
+  }
+  // Rust
+  if (/^\s*fn\s+solution.*->\s*\w+/m.test(trimmed)) return { lang: 'Rust', langSlug: 'rust' };
+  // Go
+  if (/^\s*package\s+main\b/m.test(trimmed) || /^\s*func\s+solution/m.test(trimmed)) {
+    return { lang: 'Go', langSlug: 'go' };
+  }
+  // Ruby
+  if (/^\s*def\s+solution.*\n.*end\b/m.test(trimmed)) return { lang: 'Ruby', langSlug: 'ruby' };
+  // SQL
+  if (/^\s*SELECT\b/im.test(trimmed) || /^\s*WITH\b/im.test(trimmed)) {
+    return { lang: 'SQL', langSlug: 'mysql' };
+  }
+  // fallback
+  return { lang: 'Python3', langSlug: 'python3' };
+}
+
 // starter code — ace editor / textarea에서 추출 시도
-// 비로그인 시 보통 default lang(언어 선택 안 함) starter만 보임
+// 비로그인: default lang의 빈 starter만. 로그인 + 이전 풀이: 마지막 작성 코드.
+// lang 감지: 페이지의 lang selector → fallback code heuristic
 function extractCodeSnippets(
   $: cheerio.CheerioAPI
 ): Array<{ lang: string; langSlug: string; code: string }> {
   const snippets: Array<{ lang: string; langSlug: string; code: string }> = [];
-  // ace editor에 setValue로 init하는 패턴 — script 안에서 발견
-  // 페이지 자체에 textarea도 가능
-  const textareaCode = $('textarea#code-editor, textarea[name="code"]').first().text();
-  if (textareaCode && textareaCode.trim()) {
-    // 언어 추정 어려움 — 사용자가 select하면 거기서 보임. default는 모름.
-    snippets.push({ lang: 'Python3', langSlug: 'python3', code: textareaCode });
+  // 다양한 textarea selector
+  const textareaCandidates = [
+    'textarea#code-editor',
+    'textarea[name="code"]',
+    'textarea.code',
+    'textarea#code',
+    'textarea[data-code]',
+  ];
+  let code = '';
+  for (const sel of textareaCandidates) {
+    const t = $(sel).first().text();
+    if (t && t.trim()) {
+      code = t;
+      break;
+    }
   }
+  if (!code.trim()) return snippets;
+
+  // lang 추정 — 페이지의 lang selector / dropdown 시도, 못 찾으면 코드 heuristic
+  const langSelectCandidates = [
+    'select#language option[selected]',
+    'select[name="language"] option[selected]',
+    'select#code-language option[selected]',
+    '.lang-selector .active',
+    '[data-lang]:not([data-lang=""])',
+  ];
+  let langFromDom = '';
+  for (const sel of langSelectCandidates) {
+    const $el = $(sel).first();
+    const dataLang = $el.attr('data-lang') || $el.attr('value');
+    if (dataLang) {
+      langFromDom = dataLang.toLowerCase();
+      break;
+    }
+    const text = $el.text().trim().toLowerCase();
+    if (text) {
+      langFromDom = text;
+      break;
+    }
+  }
+
+  // DOM에서 잡은 lang이 있으면 정규화, 없으면 코드 heuristic
+  let lang: string, langSlug: string;
+  if (langFromDom) {
+    const normalized = normalizeLangName(langFromDom);
+    lang = normalized.lang;
+    langSlug = normalized.langSlug;
+  } else {
+    const detected = detectLangFromCode(code);
+    lang = detected.lang;
+    langSlug = detected.langSlug;
+  }
+
+  snippets.push({ lang, langSlug, code });
   return snippets;
+}
+
+// 프로그래머스 lang 표시명 또는 keyword → 표준 (lang, langSlug)
+function normalizeLangName(raw: string): { lang: string; langSlug: string } {
+  const r = raw.toLowerCase().trim();
+  if (r.includes('python')) return { lang: 'Python3', langSlug: 'python3' };
+  if (r === 'cpp' || r.includes('c++')) return { lang: 'C++', langSlug: 'cpp' };
+  if (r === 'java' || r.includes('java') && !r.includes('javascript')) return { lang: 'Java', langSlug: 'java' };
+  if (r.includes('javascript') || r === 'js') return { lang: 'JavaScript', langSlug: 'javascript' };
+  if (r.includes('typescript') || r === 'ts') return { lang: 'TypeScript', langSlug: 'typescript' };
+  if (r.includes('kotlin')) return { lang: 'Kotlin', langSlug: 'kotlin' };
+  if (r.includes('swift')) return { lang: 'Swift', langSlug: 'swift' };
+  if (r.includes('go') || r === 'golang') return { lang: 'Go', langSlug: 'go' };
+  if (r.includes('rust')) return { lang: 'Rust', langSlug: 'rust' };
+  if (r.includes('ruby')) return { lang: 'Ruby', langSlug: 'ruby' };
+  if (r.includes('scala')) return { lang: 'Scala', langSlug: 'scala' };
+  if (r.includes('c#') || r.includes('csharp')) return { lang: 'C#', langSlug: 'csharp' };
+  if (r === 'c' || r.includes(' c ') || r.endsWith(' c')) return { lang: 'C', langSlug: 'c' };
+  if (r.includes('sql') || r.includes('mysql')) return { lang: 'SQL', langSlug: 'mysql' };
+  // fallback
+  return { lang: raw, langSlug: r.replace(/[^\w]/g, '').slice(0, 20) || 'python3' };
 }
 
 // 입출력 예시 테이블 추출 — content 안 first table을 텍스트화
@@ -208,7 +348,7 @@ export async function fetchProgrammersProblem(lessonId: string): Promise<Program
     throw new Error(`프로그래머스 페이지에서 문제 본문을 찾을 수 없어요 — ${loginHint}`);
   }
 
-  const difficulty = extractDifficulty($);
+  const difficulty = extractDifficulty($, html);
   const codeSnippets = extractCodeSnippets($);
   const exampleTestcases = extractExampleTestcases($, content);
 
