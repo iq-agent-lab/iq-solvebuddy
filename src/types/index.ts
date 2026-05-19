@@ -239,6 +239,7 @@ export interface IqApi {
       commitUrl?: string;
     }>
   >;
+  clearTranslationCache: () => Promise<IpcResult<{ removed: number }>>;
   createRepo: () => Promise<IpcResult<CreateRepoResult>>;
   verifyGithub: () => Promise<IpcResult<VerifyResult>>;
   onFetchProgress: (cb: (stage: string) => void) => () => void;

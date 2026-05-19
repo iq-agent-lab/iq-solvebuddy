@@ -809,12 +809,16 @@ async function handleBackfill(): Promise<void> {
     const existing = readSolutions();
     const map = new Map<string, SolutionRecord>();
     for (const s of existing) map.set(`${s.titleSlug}:${s.language}`, s);
+    // 플랫폼별 added breakdown — 4개 플랫폼 backfill 검증 가시화
+    const addedPerPlatform: Record<string, number> = {};
     let added = 0;
     for (const s of backfilled) {
       const key = `${s.titleSlug}:${s.language}`;
       if (!map.has(key)) {
         map.set(key, s);
         added++;
+        const p = s.platform || 'LeetCode';
+        addedPerPlatform[p] = (addedPerPlatform[p] || 0) + 1;
       }
     }
     const merged = Array.from(map.values()).sort((a, b) => b.savedAt - a.savedAt);
@@ -822,7 +826,11 @@ async function handleBackfill(): Promise<void> {
     renderStatsDashboard();
 
     if (added > 0) {
-      setStatus(`✓ ${added}개 풀이 새로 동기화 (총 ${merged.length}개)`, 'ok');
+      // 플랫폼별 breakdown 표시 — 4개 플랫폼 backfill 검증 가시화
+      const breakdown = Object.entries(addedPerPlatform)
+        .map(([p, n]) => `${PLATFORM_META[p as PlatformId]?.abbr || p}:${n}`)
+        .join(' · ');
+      setStatus(`✓ ${added}개 풀이 동기화 (${breakdown}) · 총 ${merged.length}개`, 'ok');
     } else {
       setStatus('이미 모두 동기화되어 있어요', 'ok');
     }
@@ -1821,11 +1829,11 @@ async function handleVerifyGithub(): Promise<void> {
   }
 }
 
-// ─── parseProblemInput client (paste preview) ────────────────
+// ─── parseProblemInput client (paste preview) — v1.11+ URL만 ────────────────
 // src/util/language.ts의 parseProblemInput과 동일 로직 (renderer는 import 불가)
-// 숫자 입력은 client에서 미리보기만 — 실제 해결은 main의 GraphQL 호출
+// 4개 플랫폼 URL 매칭. 매칭 안 되면 'invalid' kind (paste preview에 에러 hint)
 interface ClientParsed {
-  kind: 'slug' | 'numeric' | 'programmers' | 'atcoder' | 'codeforces' | 'empty';
+  kind: 'leetcode' | 'programmers' | 'atcoder' | 'codeforces' | 'invalid' | 'empty';
   value: string;
 }
 
@@ -1833,46 +1841,32 @@ function parseProblemInputClient(input: string): ClientParsed {
   const trimmed = input.trim();
   if (!trimmed) return { kind: 'empty', value: '' };
 
-  // Codeforces URL — contest 또는 problemset 형식
+  // Codeforces URL
   const cfMatch = trimmed.match(/codeforces\.com\/(?:contest|problemset\/problem)\/(\d+)\/([A-Z]\d*)/i);
   if (cfMatch) {
     return { kind: 'codeforces', value: `${cfMatch[1]}${cfMatch[2].toUpperCase()}` };
   }
 
-  // AtCoder URL — atcoder.jp/contests/{contestId}/tasks/{taskId} (하이픈 허용)
-  const atcoderPattern = /atcoder\.jp\/contests\/[a-z0-9_-]+\/tasks\/([a-z0-9_-]+)/i;
-  const atcoderMatch = trimmed.match(atcoderPattern);
+  // AtCoder URL (하이픈 허용)
+  const atcoderMatch = trimmed.match(/atcoder\.jp\/contests\/[a-z0-9_-]+\/tasks\/([a-z0-9_-]+)/i);
   if (atcoderMatch) {
     return { kind: 'atcoder', value: atcoderMatch[1].toLowerCase() };
   }
 
-  // Programmers URL — 본 도구가 LeetCode 우선이지만 동등하게 처리
-  const programmersPattern = /programmers\.co\.kr\/learn\/courses\/\d+\/lessons\/(\d+)/i;
-  const programmersMatch = trimmed.match(programmersPattern);
-  if (programmersMatch) {
-    return { kind: 'programmers', value: programmersMatch[1] };
+  // Programmers URL
+  const progMatch = trimmed.match(/programmers\.co\.kr\/learn\/courses\/\d+\/lessons\/(\d+)/i);
+  if (progMatch) {
+    return { kind: 'programmers', value: progMatch[1] };
   }
 
-  // 숫자만 — LeetCode frontendId (Programmers는 명확한 URL 필요)
-  if (/^\d+$/.test(trimmed)) {
-    return { kind: 'numeric', value: trimmed };
+  // LeetCode URL
+  const lcMatch = trimmed.match(/leetcode\.(?:com|cn)\/problems\/([a-zA-Z0-9-]+)/i);
+  if (lcMatch) {
+    return { kind: 'leetcode', value: lcMatch[1].toLowerCase() };
   }
 
-  // URL — cn 도메인도 같은 slug로 처리 (cn은 Cloudflare 직접 접근 불가, com에서 fetch)
-  const urlPattern = /leetcode\.(?:com|cn)\/problems\/([a-zA-Z0-9-]+)/i;
-  const urlMatch = trimmed.match(urlPattern);
-  if (urlMatch) {
-    return { kind: 'slug', value: urlMatch[1].toLowerCase() };
-  }
-
-  // 자유 텍스트
-  const slug = trimmed
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return { kind: 'slug', value: slug };
+  // 매칭 실패 — URL이 아님
+  return { kind: 'invalid', value: trimmed };
 }
 
 function updatePastePreview(): void {
@@ -1885,41 +1879,29 @@ function updatePastePreview(): void {
 
   const parsed = parseProblemInputClient(raw);
 
-  // Codeforces URL — contestId+index 미리보기 (예: '1234A')
   if (parsed.kind === 'codeforces') {
     preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">Codeforces ${parsed.value}</span> 으로 가져오기`;
     preview.classList.remove('hidden');
     return;
   }
-
-  // AtCoder URL — taskId 미리보기
   if (parsed.kind === 'atcoder') {
     preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">AtCoder ${parsed.value}</span> 으로 가져오기`;
     preview.classList.remove('hidden');
     return;
   }
-
-  // Programmers URL — lesson id 미리보기
   if (parsed.kind === 'programmers') {
     preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">프로그래머스 #${parsed.value}</span> 으로 가져오기`;
     preview.classList.remove('hidden');
     return;
   }
-
-  // 숫자 입력 — frontendId 검색 미리 안내
-  if (parsed.kind === 'numeric') {
-    preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">문제 #${parsed.value}</span> 으로 검색`;
+  if (parsed.kind === 'leetcode') {
+    preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">LeetCode ${parsed.value}</span> 으로 가져오기`;
     preview.classList.remove('hidden');
     return;
   }
-
-  // slug — 원본과 다르면 정규화 결과 표시
-  if (parsed.kind === 'slug') {
-    if (!parsed.value || parsed.value === raw.toLowerCase()) {
-      preview.classList.add('hidden');
-      return;
-    }
-    preview.innerHTML = `<span class="preview-arrow">→</span><span class="preview-slug">${parsed.value}</span> 으로 정규화`;
+  // invalid — URL 형식 안내 (덜 도드라지게 회색)
+  if (parsed.kind === 'invalid') {
+    preview.innerHTML = `<span class="preview-arrow">⚠</span><span class="preview-invalid">URL이 아니에요 — 4개 플랫폼 URL 중 하나를 붙여넣어주세요</span>`;
     preview.classList.remove('hidden');
     return;
   }
@@ -2203,6 +2185,33 @@ $btn('pat-help-btn').addEventListener('click', () => {
 });
 
 $btn('verify-github-btn').addEventListener('click', handleVerifyGithub);
+
+// 번역 캐시 비우기 — 사용자 명시 클릭 후 모든 cache 파일 삭제
+$btn('clear-cache-btn').addEventListener('click', async () => {
+  const btn = $btn('clear-cache-btn');
+  const result = $('clear-cache-result');
+  btn.disabled = true;
+  setButtonLoading('clear-cache-btn', '비우는 중...');
+  try {
+    const r = await window.api.clearTranslationCache();
+    if (r.ok) {
+      result.classList.remove('hidden', 'error');
+      result.classList.add('ok');
+      result.textContent = `✓ ${r.removed}개 캐시 파일 삭제 — 다음 fetch부터 새로 받아옵니다`;
+    } else {
+      result.classList.remove('hidden', 'ok');
+      result.classList.add('error');
+      result.textContent = `✗ 캐시 삭제 실패: ${r.error}`;
+    }
+  } catch (e: any) {
+    result.classList.remove('hidden', 'ok');
+    result.classList.add('error');
+    result.textContent = `✗ ${e?.message || String(e)}`;
+  } finally {
+    btn.disabled = false;
+    resetButton('clear-cache-btn', '번역 캐시 비우기');
+  }
+});
 
 // (구) textarea ↔ overlay 동기화 — CodeMirror 5로 대체됨, 별도 listener 불필요
 
