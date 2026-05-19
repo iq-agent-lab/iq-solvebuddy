@@ -90,9 +90,14 @@ export function organizeProgrammersMarkdown(problem: ProgrammersProblem): string
   }
 
   // 메타 헤더 + 본문 — LLM prompt 출력 형식과 동일
+  // difficulty가 'Lv ?'(추출 실패)면 표시 안 함 — 사용자 요청: "정 안되면 그냥 아예 빼는게 맞는 것 같아"
+  // PG는 SPA + 비공식 API라 모든 케이스에서 level 가져오기 불가능 → 잡히면 표시, 못 잡으면 숨김
+  const diffPart = problem.difficulty && problem.difficulty !== 'Lv ?'
+    ? `**${problem.difficulty}** · `
+    : '';
   const header = `# ${problem.title}
 
-> **${problem.difficulty}** · [원문](${problem.url})
+> ${diffPart}[원문](${problem.url})
 
 ## 문제
 

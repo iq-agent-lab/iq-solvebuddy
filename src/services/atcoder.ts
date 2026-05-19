@@ -143,7 +143,8 @@ export interface AtCoderTaskRef {
 }
 
 export function parseAtcoderUrl(url: string): AtCoderTaskRef | null {
-  const m = url.match(/atcoder\.jp\/contests\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)/i);
+  // 하이픈 허용 — SCPC 등 일부 콘테스트의 contestId/taskId에 하이픈 포함 (scpc2026-div2)
+  const m = url.match(/atcoder\.jp\/contests\/([a-z0-9_-]+)\/tasks\/([a-z0-9_-]+)/i);
   if (!m) return null;
   return { contestId: m[1].toLowerCase(), taskId: m[2].toLowerCase() };
 }

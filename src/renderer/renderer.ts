@@ -1835,8 +1835,8 @@ function parseProblemInputClient(input: string): ClientParsed {
     return { kind: 'codeforces', value: `${cfMatch[1]}${cfMatch[2].toUpperCase()}` };
   }
 
-  // AtCoder URL — atcoder.jp/contests/{contestId}/tasks/{taskId}
-  const atcoderPattern = /atcoder\.jp\/contests\/[a-z0-9_]+\/tasks\/([a-z0-9_]+)/i;
+  // AtCoder URL — atcoder.jp/contests/{contestId}/tasks/{taskId} (하이픈 허용)
+  const atcoderPattern = /atcoder\.jp\/contests\/[a-z0-9_-]+\/tasks\/([a-z0-9_-]+)/i;
   const atcoderMatch = trimmed.match(atcoderPattern);
   if (atcoderMatch) {
     return { kind: 'atcoder', value: atcoderMatch[1].toLowerCase() };

@@ -132,7 +132,8 @@ export function parseProblemInput(input: string): ParsedInput {
 
   // AtCoder URL — atcoder.jp 고유
   // https://atcoder.jp/contests/{contestId}/tasks/{taskId}
-  const acMatch = trimmed.match(/atcoder\.jp\/contests\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)/i);
+  // contestId/taskId에 하이픈 허용 (예: scpc2026-div2, scpc2026_div2_g) — SCPC 등 일부 콘테스트
+  const acMatch = trimmed.match(/atcoder\.jp\/contests\/([a-z0-9_-]+)\/tasks\/([a-z0-9_-]+)/i);
   if (acMatch) {
     return {
       platform: 'AtCoder',
