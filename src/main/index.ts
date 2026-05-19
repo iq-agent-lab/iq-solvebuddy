@@ -35,6 +35,7 @@ import { decryptProcessEnvSecrets, migrateSecretsIfNeeded } from './settings';
 import { checkForUpdates } from './update';
 import { prewarmAtcoderModels } from '../services/atcoderModels';
 import { closeAllBrowserFetchWindows } from '../services/browserFetch';
+import { setProgrammersWindowGetterForLevel } from '../services/programmers';
 
 // ─── userData 경로 호환성 ─────────────────────────────────────
 // v1.0+ 도구 이름이 iq-solvebuddy로 바뀌었지만, Electron의 userData 경로는
@@ -875,7 +876,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 600,
     show: false,
-    title: 'iq-solvebuddy',
+    title: 'Solve Buddy',
     backgroundColor: '#0f0e0d',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
@@ -995,7 +996,7 @@ function createTray() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: 'iq-solvebuddy 보이기',
+      label: 'Solve Buddy 보이기',
       accelerator: activeShortcut || undefined,
       click: showAndFocus,
     },
@@ -1014,7 +1015,7 @@ function createTray() {
     },
   ]);
 
-  tray.setToolTip(`iq-solvebuddy${accelLabel ? ` (${accelLabel})` : ''}`);
+  tray.setToolTip(`Solve Buddy${accelLabel ? ` (${accelLabel})` : ''}`);
   tray.setContextMenu(menu);
   tray.on('click', toggleWindow);
 }
@@ -1025,7 +1026,7 @@ function createAppMenu() {
   const menu = Menu.buildFromTemplate([
     ...(isMac
       ? [{
-          label: 'iq-solvebuddy',
+          label: 'Solve Buddy',
           submenu: [
             { role: 'about' as const },
             { type: 'separator' as const },
@@ -1124,6 +1125,8 @@ app.whenReady().then(async () => {
   setProgrammersUrlGetter(getCurrentProgrammersUrl);
   setPullCurrentProgrammersUrl(pullCurrentProgrammersUrl);
   setProgrammersWindowGetter(getProgrammersWindow);
+  // programmers.ts의 level 추출 fallback도 같은 윈도우 활용
+  setProgrammersWindowGetterForLevel(getProgrammersWindow);
   setShortcutGetter(() => activeShortcut);
 
   createAppMenu();

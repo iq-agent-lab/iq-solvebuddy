@@ -496,18 +496,132 @@ function renderBarRow(label: string, count: number, max: number, extraClass = ''
   </div>`;
 }
 
+// 통계 dashboard 필터 — 플랫폼별 분리 (난이도 기준이 다르므로)
+let statsFilter: 'all' | PlatformId = 'all';
+
+// 난이도 분포 — 플랫폼별 분류 로직 다름
+// LeetCode: Easy/Medium/Hard
+// Programmers: Lv 1~5
+// AtCoder: 점수 구간 (~200 / 200-300 / 300-400 / 400+)
+// Codeforces: rating 구간 (<1200 / 1200-1599 / 1600-1999 / 2000+) — Div.X 표기도 같은 bin
+function difficultyBins(platform: 'all' | PlatformId, solutions: SolutionRecord[]): {
+  title: string;
+  bins: Array<{ label: string; count: number; cls?: string }>;
+} {
+  if (platform === 'LeetCode' || platform === 'all') {
+    // 'all'은 LC 기준으로 (가장 익숙)
+    const order = ['Easy', 'Medium', 'Hard'];
+    const cls: Record<string, string> = { Easy: 'easy', Medium: 'medium', Hard: 'hard' };
+    const counts: Record<string, number> = { Easy: 0, Medium: 0, Hard: 0 };
+    for (const s of solutions) {
+      if (counts[s.difficulty] !== undefined) counts[s.difficulty]++;
+    }
+    return {
+      title: platform === 'all' ? '난이도 분포 (LeetCode 기준)' : '난이도 분포',
+      bins: order.map((d) => ({ label: d, count: counts[d], cls: cls[d] })),
+    };
+  }
+  if (platform === 'Programmers') {
+    const counts: Record<string, number> = { 'Lv 1': 0, 'Lv 2': 0, 'Lv 3': 0, 'Lv 4': 0, 'Lv 5': 0 };
+    const cls: Record<string, string> = { 'Lv 1': 'easy', 'Lv 2': 'easy', 'Lv 3': 'medium', 'Lv 4': 'hard', 'Lv 5': 'hard' };
+    for (const s of solutions) {
+      const m = String(s.difficulty || '').match(/Lv\.?\s*(\d)/i);
+      const key = m ? `Lv ${m[1]}` : null;
+      if (key && counts[key] !== undefined) counts[key]++;
+    }
+    return {
+      title: '난이도 분포',
+      bins: Object.keys(counts).map((k) => ({ label: k, count: counts[k], cls: cls[k] })),
+    };
+  }
+  if (platform === 'AtCoder') {
+    // AtCoder difficulty 형식: "300점" 또는 "300점 · 난이도 1234"
+    const bins = [
+      { label: '~200점', max: 200, cls: 'easy', count: 0 },
+      { label: '300~400점', min: 201, max: 400, cls: 'medium', count: 0 },
+      { label: '500~700점', min: 401, max: 700, cls: 'medium', count: 0 },
+      { label: '800점~', min: 701, max: 99999, cls: 'hard', count: 0 },
+    ];
+    for (const s of solutions) {
+      const m = String(s.difficulty || '').match(/(\d+)점/);
+      if (!m) continue;
+      const v = parseInt(m[1], 10);
+      for (const b of bins) {
+        if (v <= (b.max ?? 99999) && v >= ((b as { min?: number }).min ?? 0)) {
+          b.count++;
+          break;
+        }
+      }
+    }
+    return {
+      title: '점수 분포',
+      bins: bins.map((b) => ({ label: b.label, count: b.count, cls: b.cls })),
+    };
+  }
+  if (platform === 'Codeforces') {
+    // CF rating 형식: "★1500" 또는 fallback "Div.2 C"
+    // rating 우선 — 못 잡으면 Div + index 기반 추정 bin
+    const bins = [
+      { label: '~1199', max: 1199, cls: 'easy', count: 0 },
+      { label: '1200~1599', min: 1200, max: 1599, cls: 'medium', count: 0 },
+      { label: '1600~1999', min: 1600, max: 1999, cls: 'medium', count: 0 },
+      { label: '2000~', min: 2000, max: 99999, cls: 'hard', count: 0 },
+    ];
+    let unclassified = 0;
+    for (const s of solutions) {
+      const m = String(s.difficulty || '').match(/★(\d+)/);
+      if (!m) {
+        unclassified++;
+        continue;
+      }
+      const v = parseInt(m[1], 10);
+      for (const b of bins) {
+        if (v <= (b.max ?? 99999) && v >= ((b as { min?: number }).min ?? 0)) {
+          b.count++;
+          break;
+        }
+      }
+    }
+    const out = bins.map((b) => ({ label: b.label, count: b.count, cls: b.cls }));
+    if (unclassified > 0) {
+      out.push({ label: '난이도 미정', count: unclassified, cls: '' });
+    }
+    return { title: '★rating 분포', bins: out };
+  }
+  // BOJ 또는 unknown — empty
+  return { title: '난이도 분포', bins: [] };
+}
+
 function renderStatsDashboard(): void {
-  const solutions = readSolutions();
+  const all = readSolutions();
   const empty = $('stats-empty');
   const content = $('stats-content');
 
-  if (solutions.length === 0) {
+  if (all.length === 0) {
     empty.classList.remove('hidden');
     content.classList.add('hidden');
     return;
   }
   empty.classList.add('hidden');
   content.classList.remove('hidden');
+
+  // 플랫폼 필터 적용
+  const solutions = statsFilter === 'all'
+    ? all
+    : all.filter((s) => (s.platform || 'LeetCode') === statsFilter);
+
+  // 필터 후 빈 케이스도 표시 (전체엔 풀이 있지만 그 플랫폼만 0)
+  if (solutions.length === 0) {
+    $('stats-total').textContent = '0';
+    $('stats-this-month').textContent = '0';
+    $('stats-week').textContent = '0';
+    $('stats-streak').innerHTML = `0<span class="stats-value-unit">일</span>`;
+    $('stats-difficulty').innerHTML = '<div class="stats-empty-inline">이 플랫폼 풀이가 아직 없어요</div>';
+    $('stats-language').innerHTML = '';
+    $('stats-monthly').innerHTML = '';
+    $('stats-recent').innerHTML = '';
+    return;
+  }
 
   // 요약
   $('stats-total').textContent = String(solutions.length);
@@ -521,16 +635,12 @@ function renderStatsDashboard(): void {
   // streak는 숫자 + "일" suffix — innerHTML로 unit span 유지
   streakValueEl.innerHTML = `${computeStreak(solutions)}<span class="stats-value-unit">일</span>`;
 
-  // 난이도 분포
-  const diffOrder = ['Easy', 'Medium', 'Hard'];
-  const diffClass: Record<string, string> = { Easy: 'easy', Medium: 'medium', Hard: 'hard' };
-  const diffCounts: Record<string, number> = { Easy: 0, Medium: 0, Hard: 0 };
-  for (const s of solutions) {
-    if (diffCounts[s.difficulty] !== undefined) diffCounts[s.difficulty]++;
-  }
-  const maxDiff = Math.max(...Object.values(diffCounts), 1);
-  $('stats-difficulty').innerHTML = diffOrder
-    .map((d) => renderBarRow(d, diffCounts[d], maxDiff, diffClass[d]))
+  // 난이도 분포 — 플랫폼별 분류
+  const { title: diffTitle, bins } = difficultyBins(statsFilter, solutions);
+  $('stats-difficulty-title').textContent = diffTitle;
+  const maxDiff = Math.max(...bins.map((b) => b.count), 1);
+  $('stats-difficulty').innerHTML = bins
+    .map((b) => renderBarRow(b.label, b.count, maxDiff, b.cls))
     .join('');
 
   // 언어 분포 (사용 언어만, 카운트 내림차순)
@@ -1979,6 +2089,20 @@ async function handleFetchSubmission(): Promise<void> {
 
 $btn('fetch-submission-btn').addEventListener('click', handleFetchSubmission);
 $btn('open-stats-btn').addEventListener('click', openStats);
+
+// 통계 모달 플랫폼 탭 — 클릭 시 필터 변경 + 재 render
+$('stats-tabs').addEventListener('click', (e: Event) => {
+  const target = e.target as HTMLElement | null;
+  const tab = target?.closest('.stats-tab') as HTMLElement | null;
+  if (!tab) return;
+  const platform = tab.dataset.platform as 'all' | PlatformId | undefined;
+  if (!platform) return;
+  // active 표시
+  const allTabs = document.querySelectorAll('.stats-tab');
+  allTabs.forEach((t) => t.classList.toggle('active', t === tab));
+  statsFilter = platform;
+  renderStatsDashboard();
+});
 $btn('close-stats').addEventListener('click', (e: Event) => {
   e.stopPropagation();
   closeStats();
