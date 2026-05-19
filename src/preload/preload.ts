@@ -34,10 +34,16 @@ contextBridge.exposeInMainWorld('api', {
       | { platform: 'Codeforces'; contestId: string; index: string }
       | { platform: 'Programmers'; lessonId: string }
   ) => ipcRenderer.invoke('fetch-submission', payload),
-  hasAcceptedSubmission: (titleSlug: string) =>
-    ipcRenderer.invoke('has-accepted-submission', titleSlug),
-  confirmUploadWithoutAccepted: (titleSlug: string) =>
-    ipcRenderer.invoke('confirm-upload-without-accepted', titleSlug),
+  hasAcceptedSubmission: (
+    payload:
+      | string  // legacy: LeetCode titleSlug
+      | { platform: 'LeetCode'; titleSlug: string }
+      | { platform: 'AtCoder'; contestId: string; taskId: string }
+      | { platform: 'Codeforces'; contestId: string; index: string }
+  ) => ipcRenderer.invoke('has-accepted-submission', payload),
+  confirmUploadWithoutAccepted: (
+    payload: string | { platform: 'LeetCode' | 'AtCoder' | 'Codeforces'; label: string }
+  ) => ipcRenderer.invoke('confirm-upload-without-accepted', payload),
   updateRetrospective: (payload: {
     problem: unknown;
     language: string;

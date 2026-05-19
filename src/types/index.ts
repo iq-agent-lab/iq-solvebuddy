@@ -204,10 +204,14 @@ export interface IqApi {
       | { platform: 'Programmers'; lessonId: string }
   ) => Promise<IpcResult<{ code: string; langSlug: string; langName: string }>>;
   hasAcceptedSubmission: (
-    titleSlug: string
+    payload:
+      | string  // legacy: LeetCode titleSlug
+      | { platform: 'LeetCode'; titleSlug: string }
+      | { platform: 'AtCoder'; contestId: string; taskId: string }
+      | { platform: 'Codeforces'; contestId: string; index: string }
   ) => Promise<{ accepted: boolean | null }>;
   confirmUploadWithoutAccepted: (
-    titleSlug: string
+    payload: string | { platform: 'LeetCode' | 'AtCoder' | 'Codeforces'; label: string }
   ) => Promise<{ proceed: boolean; dontAskAgain: boolean }>;
   updateRetrospective: (payload: {
     problem: Problem;

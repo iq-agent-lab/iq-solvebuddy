@@ -190,3 +190,33 @@ export async function isAtcoderLoggedIn(): Promise<boolean> {
   const { cookieHeader } = await getAtcoderCookies();
   return Boolean(cookieHeader);
 }
+
+/**
+ * AtCoder Accepted 사전 확인 — 풀이 업로드 전 AC submission 있는지 가벼운 체크.
+ * fetchAtcoderSubmission 코드 재사용 (목록 페이지 1번만 fetch, detail 안 함).
+ *
+ * @returns true = AC 있음 / false = AC 없음 / null = 확인 불가 (미로그인 등)
+ */
+export async function hasAtcoderAccepted(
+  contestId: string,
+  taskId: string
+): Promise<boolean | null> {
+  const { cookieHeader } = await getAtcoderCookies();
+  if (!cookieHeader) return null; // 미로그인 — 확인 불가, skip 처리
+
+  const listUrl = `${BASE_URL}/contests/${contestId}/submissions/me?f.Task=${encodeURIComponent(taskId)}&f.Status=AC`;
+  try {
+    const res = await fetch(listUrl, {
+      headers: { ...COMMON_HEADERS, Cookie: cookieHeader },
+      redirect: 'follow',
+    });
+    if (!res.ok) return null; // 인증 만료 등 — 사용자 마찰 회피 위해 skip
+    if (res.url.includes('/login')) return null;
+
+    const html = await res.text();
+    // 빠른 휴리스틱: AC submission 링크 1개 이상 있으면 OK
+    return new RegExp(`/contests/${contestId}/submissions/\\d+`).test(html);
+  } catch {
+    return null;
+  }
+}
