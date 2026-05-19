@@ -284,11 +284,51 @@ async function checkConfig(): Promise<void> {
 const RECENT_KEY = 'iq-leetbuddy:recent-problems';
 const RECENT_MAX = 5;
 
+type PlatformId = 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces' | 'BOJ';
+
 interface RecentItem {
+  /** v1.6.2+ — platform 구분 위해. legacy 데이터엔 없음 → 'LeetCode' fallback */
+  platform?: PlatformId;
   frontendId: string;
   title: string;
   titleSlug: string;
   savedAt: number;
+  /** v1.6.2+ — re-click 시 원본 URL 복원 위해. legacy 없음 → titleSlug paste */
+  inputUrl?: string;
+}
+
+// 플랫폼별 표시 메타 — chip badge, 통계 라벨, 색깔
+const PLATFORM_META: Record<PlatformId, { abbr: string; label: string; color: string }> = {
+  LeetCode:    { abbr: 'LC', label: 'LeetCode',    color: '#ffa116' },
+  Programmers: { abbr: 'PG', label: '프로그래머스', color: '#3eb47e' },
+  AtCoder:     { abbr: 'AC', label: 'AtCoder',     color: '#222222' },
+  Codeforces:  { abbr: 'CF', label: 'Codeforces',  color: '#1f8acb' },
+  BOJ:         { abbr: 'BJ', label: '백준',         color: '#0076c0' },
+};
+
+function platformOf(problem: Problem): PlatformId {
+  // BOJ는 Phase 5에 예약 — 현재 Problem union엔 미포함
+  const p = problem.platform;
+  if (p === 'Programmers' || p === 'AtCoder' || p === 'Codeforces') return p;
+  return 'LeetCode';
+}
+
+// 플랫폼별 원본 URL — recent chip 재클릭 시 메인 input에 복원 (fetchAndTranslate가 그대로 parse)
+function problemInputUrl(problem: Problem): string {
+  if (problem.platform === 'AtCoder') {
+    const ac = problem as { contestId: string; taskId: string };
+    return `https://atcoder.jp/contests/${ac.contestId}/tasks/${ac.taskId}`;
+  }
+  if (problem.platform === 'Codeforces') {
+    const cf = problem as { contestId: string; index: string };
+    return `https://codeforces.com/problemset/problem/${cf.contestId}/${cf.index}`;
+  }
+  if (problem.platform === 'Programmers') {
+    const pg = problem as { lessonId: string };
+    return `https://school.programmers.co.kr/learn/courses/30/lessons/${pg.lessonId}`;
+  }
+  // LeetCode
+  return `https://leetcode.com/problems/${problem.titleSlug}/`;
 }
 
 function readRecent(): RecentItem[] {
@@ -305,12 +345,16 @@ function readRecent(): RecentItem[] {
 function pushRecent(problem: Problem): void {
   try {
     const item: RecentItem = {
+      platform: platformOf(problem),
       frontendId: problem.questionFrontendId,
       title: problem.title,
       titleSlug: problem.titleSlug,
       savedAt: Date.now(),
+      inputUrl: problemInputUrl(problem),
     };
-    const filtered = readRecent().filter((p) => p.titleSlug !== item.titleSlug);
+    // dedup by titleSlug+platform — 같은 slug라도 플랫폼 다르면 다른 item
+    const key = `${item.platform}:${item.titleSlug}`;
+    const filtered = readRecent().filter((p) => `${p.platform || 'LeetCode'}:${p.titleSlug}` !== key);
     filtered.unshift(item);
     const sliced = filtered.slice(0, RECENT_MAX);
     localStorage.setItem(RECENT_KEY, JSON.stringify(sliced));
@@ -329,11 +373,19 @@ function renderRecent(): void {
     return;
   }
   const chips = arr
-    .map((p) => {
+    .map((p, i) => {
       const slug = escapeHtml(p.titleSlug);
       const title = escapeHtml(p.title);
       const id = escapeHtml(String(p.frontendId));
-      return `<button class="recent-chip" data-slug="${slug}" title="${id}. ${title}"><span class="recent-chip-id">${id}.</span>${title}</button>`;
+      const platform = (p.platform || 'LeetCode') as PlatformId;
+      const meta = PLATFORM_META[platform] || PLATFORM_META.LeetCode;
+      const abbr = escapeHtml(meta.abbr);
+      const platLabel = escapeHtml(meta.label);
+      // data-* attrs: re-click 시 원본 URL 복원에 활용
+      return `<button class="recent-chip" data-idx="${i}" data-slug="${slug}" title="${platLabel} · ${id}. ${title}">` +
+        `<span class="recent-chip-badge" style="--badge-color:${meta.color}">${abbr}</span>` +
+        `<span class="recent-chip-id">${id}.</span>${title}` +
+        `</button>`;
     })
     .join('');
   wrap.innerHTML = `<span class="recent-label">최근</span>${chips}`;
@@ -515,13 +567,18 @@ function renderStatsDashboard(): void {
     })
     .join('');
 
-  // 최근 풀이 10개 (이미 unshift로 최신 우선)
+  // 최근 풀이 10개 (이미 unshift로 최신 우선) — 플랫폼 badge 포함
   const recent = solutions.slice(0, 10);
   $('stats-recent').innerHTML = recent
     .map((s) => {
       const date = ymdKey(s.savedAt);
-      return `<div class="stats-recent-row">
-        <span class="stats-recent-id">#${s.frontendId}</span>
+      const platform = (s.platform || 'LeetCode') as PlatformId;
+      const meta = PLATFORM_META[platform] || PLATFORM_META.LeetCode;
+      const abbr = escapeHtml(meta.abbr);
+      const platLabel = escapeHtml(meta.label);
+      return `<div class="stats-recent-row" title="${platLabel}">
+        <span class="stats-recent-badge" style="--badge-color:${meta.color}">${abbr}</span>
+        <span class="stats-recent-id">#${escapeHtml(String(s.frontendId))}</span>
         <span class="stats-recent-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
         <span class="stats-recent-lang">${escapeHtml(s.language)}</span>
         <span class="stats-recent-date">${date}</span>
@@ -1775,13 +1832,25 @@ $btn('clear-input-btn').addEventListener('click', () => {
 });
 
 // 최근 풀이 chip 클릭 → input 채우고 자동 fetch (이벤트 위임)
+// platform별 원본 URL을 input에 넣어야 parseProblemInput이 정확히 dispatch
+// (data-idx로 readRecent()의 inputUrl 조회. legacy 데이터는 inputUrl 없어 slug fallback)
 $('recent-row').addEventListener('click', (e: Event) => {
   const target = e.target as HTMLElement | null;
   const chip = target?.closest('.recent-chip') as HTMLElement | null;
   if (!chip) return;
+  const idxStr = chip.dataset.idx;
   const slug = chip.dataset.slug;
-  if (!slug) return;
-  $input('problem-input').value = slug;
+  let inputValue: string | undefined;
+  if (idxStr !== undefined) {
+    const idx = parseInt(idxStr, 10);
+    const items = readRecent();
+    if (!isNaN(idx) && items[idx]) {
+      inputValue = items[idx].inputUrl || items[idx].titleSlug;
+    }
+  }
+  if (!inputValue) inputValue = slug;
+  if (!inputValue) return;
+  $input('problem-input').value = inputValue;
   $('clear-input-btn').classList.remove('hidden');
   updatePastePreview();
   handleFetch();

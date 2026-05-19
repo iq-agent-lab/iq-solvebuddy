@@ -151,9 +151,9 @@ ${problem.content}
 
 다음 형식으로만 출력해줘 (코드 블록이나 추가 설명 없이 바로 마크다운 본문):
 
-# ${problem.taskId}. ${problem.title}
+# ${problem.title}
 
-> **${problem.difficulty}** · ${problem.contestId} · [원문](${problem.url})
+> **${problem.difficulty}** · ${problem.contestId} / ${problem.taskId} · [원문](${problem.url})
 
 ## 문제
 

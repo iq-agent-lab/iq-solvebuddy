@@ -105,28 +105,37 @@ function extractStatement($: cheerio.CheerioAPI): string {
 }
 
 // .tag-box 영역에서 rating + algorithmic tags 분리 추출
-// rating: '*1500' 형식 (별표 + 숫자)
-// algorithmic tags: 'greedy', 'dp', 'implementation', ... (별표 없음)
+// rating: '*1500' / '★1500' / 'difficulty: 1500' 등 다양한 표기
+// algorithmic tags: 'greedy', 'dp', 'implementation', ... (rating 매칭 안 된 것)
 //
-// 같은 selector를 공유하므로 한 번 순회하며 둘 다 추출
+// 페이지 구조 차이 대응: title 속성 + lenient pattern + 여러 영역 검색
 function extractRatingAndTags($: cheerio.CheerioAPI): { rating: string; tags: string[] } {
   const tags: string[] = [];
   let rating = '?';
 
-  // 모든 .tag-box 순회 — sidebar 또는 problem-statement 안
+  // 모든 .tag-box 순회 — sidebar / 부가 박스 / problem-statement
   $('.tag-box').each((_i, el) => {
-    const t = $(el).text().trim();
+    const $el = $(el);
+    const t = $el.text().trim();
+    const title = $el.attr('title') || '';
+    const fullText = `${t} ${title}`.toLowerCase();
     if (!t) return;
 
-    // rating: "*1500" 형식 (별표로 시작, 숫자 3~4자리)
-    const ratingMatch = t.match(/^\*(\d{3,4})$/);
+    // 1) rating: text의 "*1500" / "★1500" / title의 "Difficulty: 1500"
+    //    별표/별 기호 optional — 일부 페이지는 숫자만 표시
+    let ratingMatch =
+      t.match(/[\*★]\s*(\d{3,4})/) ||
+      title.match(/(?:difficulty|rating)\s*[:=]?\s*(\d{3,4})/i);
+    // text가 순수 숫자만 (3~4자리)이고 'difficulty' 힌트 있으면 rating으로
+    if (!ratingMatch && /^\d{3,4}$/.test(t) && /difficulty|rating/i.test(fullText)) {
+      ratingMatch = t.match(/(\d{3,4})/);
+    }
     if (ratingMatch) {
-      rating = `★${ratingMatch[1]}`;
+      if (rating === '?') rating = `★${ratingMatch[1]}`;
       return;
     }
 
-    // algorithmic tag: 알파벳/공백/하이픈 — 별표/숫자 단독 제외
-    // 길이 가드: 너무 길면 다른 종류의 tag (피하기)
+    // 2) algorithmic tag: 알파/공백/하이픈, 길이 가드, rating 패턴 아님
     if (t.length > 0 && t.length < 40 && /^[a-z][a-z0-9\s\-]+$/i.test(t)) {
       tags.push(t.toLowerCase());
     }
