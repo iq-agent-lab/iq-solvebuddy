@@ -1166,6 +1166,10 @@ async function handleFetch(): Promise<void> {
     highlightCodeBlocks($('translation-output'));
     populateLanguageSelect(state.problem.codeSnippets);
 
+    // 새 문제 가져왔으니 step-3 editor 초기화 — 다른 문제 풀이 코드가 그대로
+    // 남아있으면 실수로 업로드 위험. maybeRestoreDraft가 해당 문제의 draft 있으면 복원.
+    setEditorCode('');
+
     showStep(3);
     updateDuplicateWarning();
     pushRecent(state.problem);
