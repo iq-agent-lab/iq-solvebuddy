@@ -84,6 +84,38 @@ export async function fetchHtmlViaBrowser(
 }
 
 /**
+ * 페이지 로드 후 임의 JS 실행 — client-rendered DOM 추출에 활용.
+ *
+ * 사용처:
+ *   - PG level — 정적 HTML엔 없고 hydration 후에만 채워지는 .level-active count
+ *   - 향후 PG starter code, AC submission 등 client-rendered 데이터
+ *
+ * @param url 가져올 URL
+ * @param partition 'persist:programmers' 등
+ * @param jsCode 실행할 JS — return value가 그대로 반환됨
+ * @param timeoutMs (default 15s)
+ */
+export async function executeJsOnPage<T = unknown>(
+  url: string,
+  partition: string,
+  jsCode: string,
+  timeoutMs: number = 15000
+): Promise<T> {
+  const win = getOrCreateWindow(partition);
+
+  const loadPromise = win.loadURL(url);
+  const timeoutPromise = new Promise<void>((_resolve, reject) => {
+    setTimeout(() => reject(new Error(`로드 타임아웃 (${timeoutMs}ms 초과)`)), timeoutMs);
+  });
+
+  await Promise.race([loadPromise, timeoutPromise]);
+  // SPA hydration 대기 — 페이지가 JS 실행 후 .level-active 같은 DOM 채워야
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  return (await win.webContents.executeJavaScript(jsCode, true)) as T;
+}
+
+/**
  * 앱 종료 시 모든 hidden 윈도우 정리.
  */
 export function closeAllBrowserFetchWindows(): void {
