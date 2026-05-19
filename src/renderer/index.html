@@ -62,39 +62,24 @@
       <div class="step-body">
         <h2 class="step-title">문제 가져오기</h2>
         <p class="step-hint step-hint-lead">
-          URL · slug · 문제 이름 · 또는 임베드에서 — 어떤 형식이든 OK
+          4개 플랫폼 URL 중 하나를 붙여넣기 — 또는 임베드 윈도우 chip 활용
         </p>
         <div class="recent-row hidden" id="recent-row"></div>
         <details class="hint-details">
           <summary class="hint-summary">
             <span class="hint-summary-toggle">펼쳐보기</span>
-            <span class="hint-summary-text">대소문자/공백/<code>-</code>/<code>_</code> 모두 자동 정규화 — 자세한 예시</span>
+            <span class="hint-summary-text">지원하는 URL 형식 — 4개 플랫폼</span>
           </summary>
           <div class="hint-grid">
-            <div class="hint-card">
-              <span class="hint-card-label">slug 그대로</span>
-              <div class="hint-card-examples">
-                <code>two-sum</code>
-                <code>symmetric-tree</code>
-              </div>
-            </div>
-            <div class="hint-card">
-              <span class="hint-card-label">문제 이름 (자유 형식)</span>
-              <div class="hint-card-examples">
-                <code>Two Sum</code>
-                <code>symmetric tree</code>
-                <code>TWO SUM</code>
-                <code>symmetric_tree</code>
-              </div>
-              <span class="hint-card-note">대소문자/공백/언더스코어 무관</span>
-            </div>
             <div class="hint-card hint-card-wide">
-              <span class="hint-card-label">전체 URL (어떤 페이지든)</span>
+              <span class="hint-card-label">지원 플랫폼 URL</span>
               <div class="hint-card-examples hint-card-examples-stacked">
                 <code>https://leetcode.com/problems/two-sum/</code>
-                <code>https://leetcode.com/problems/.../description/?envType=...&envId=...</code>
+                <code>https://school.programmers.co.kr/learn/courses/30/lessons/12345</code>
+                <code>https://atcoder.jp/contests/abc300/tasks/abc300_a</code>
+                <code>https://codeforces.com/problemset/problem/1234/A</code>
               </div>
-              <span class="hint-card-note">envType, envId 등 쿼리 자동 무시 — 주소창 그대로 붙여넣어도 됨</span>
+              <span class="hint-card-note">주소창 URL 그대로 — envType / description 등 쿼리/path 자동 무시</span>
             </div>
             <div class="hint-card hint-card-accent">
               <span class="hint-card-label">임베드 윈도우에서 가져오기</span>
@@ -104,33 +89,11 @@
                 <li>아래 <strong>"↩ 임베드에서"</strong> 버튼</li>
               </ul>
             </div>
-            <div class="hint-card hint-card-wide">
-              <span class="hint-card-label">프로그래머스 (v1.0+)</span>
-              <div class="hint-card-examples hint-card-examples-stacked">
-                <code>https://school.programmers.co.kr/learn/courses/30/lessons/12345</code>
-              </div>
-              <span class="hint-card-note">전체 URL 붙여넣기 — 본문은 한국어 원문 그대로 보존 (번역 안 함)</span>
-            </div>
-            <div class="hint-card hint-card-wide">
-              <span class="hint-card-label">AtCoder (v1.1+)</span>
-              <div class="hint-card-examples hint-card-examples-stacked">
-                <code>https://atcoder.jp/contests/abc300/tasks/abc300_a</code>
-              </div>
-              <span class="hint-card-note">전체 URL 붙여넣기 — 영어/일본어 statement를 한국어로 번역. 점수가 난이도</span>
-            </div>
-            <div class="hint-card hint-card-wide">
-              <span class="hint-card-label">Codeforces (v1.2+)</span>
-              <div class="hint-card-examples hint-card-examples-stacked">
-                <code>https://codeforces.com/problemset/problem/1234/A</code>
-                <code>https://codeforces.com/contest/1234/problem/A</code>
-              </div>
-              <span class="hint-card-note">두 URL 형태 모두 인식 — 영어 → 한국어 번역. rating이 난이도 (예: ★1500)</span>
-            </div>
           </div>
         </details>
         <div class="input-row">
           <div class="input-with-clear">
-            <input id="problem-input" type="text" placeholder="LeetCode / 프로그래머스 / AtCoder / Codeforces URL 또는 slug를 입력해주세요" autocomplete="off" spellcheck="false">
+            <input id="problem-input" type="text" placeholder="LeetCode / 프로그래머스 / AtCoder / Codeforces URL을 붙여넣어주세요" autocomplete="off" spellcheck="false">
             <button id="clear-input-btn" class="input-clear-btn hidden" aria-label="입력 지우기" title="입력 지우기" tabindex="-1">×</button>
           </div>
           <button id="pull-embed-btn" class="secondary pull-btn" title="임베드 윈도우(LeetCode / AtCoder / Codeforces / Programmers)의 현재 페이지 URL을 가져와 자동 fetch (⌘⇧↩)">
@@ -196,7 +159,7 @@
   </main>
 
   <footer class="app-footer">
-    <span>iq-agent-lab · v1.10.2</span>
+    <span>iq-agent-lab · v1.11.0</span>
     <span class="footer-divider">·</span>
     <span id="config-status">설정 확인 중...</span>
     <span class="footer-divider">·</span>
@@ -303,6 +266,11 @@
           <div class="verify-row">
             <button type="button" class="secondary" id="verify-github-btn">GitHub 연결 확인</button>
             <div class="verify-result hidden" id="verify-result"></div>
+          </div>
+
+          <div class="verify-row">
+            <button type="button" class="secondary" id="clear-cache-btn" title="번역/정리 결과 캐시 삭제 — 다음 fetch 시 LLM 새로 호출 (비용 발생)">번역 캐시 비우기</button>
+            <div class="verify-result hidden" id="clear-cache-result"></div>
           </div>
         </section>
 

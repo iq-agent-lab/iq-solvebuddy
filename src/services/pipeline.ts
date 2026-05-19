@@ -1,6 +1,6 @@
 // 파이프라인 오케스트레이션
 
-import { fetchProblem, resolveTitleSlugByFrontendId } from './leetcode';
+import { fetchProblem } from './leetcode';
 import { fetchProgrammersProblem } from './programmers';
 import { organizeProgrammersMarkdown } from './programmersOrganize';
 import { fetchAtcoderProblem } from './atcoder';
@@ -103,15 +103,10 @@ export async function fetchAndTranslate(
   }
 
   // ─── LeetCode 분기 ────────────────────────────────
-  // 숫자 입력 (예: "1") — frontendId → slug 해결 후 진행
-  let titleSlug = parsed.titleSlug;
-  if (parsed.isNumericId && parsed.frontendId) {
-    onProgress?.('resolving');
-    titleSlug = await resolveTitleSlugByFrontendId(parsed.frontendId);
-  }
-
+  // v1.11+ URL만 받음 → parseProblemInput이 이미 titleSlug 추출. 숫자/자유 텍스트는 throw.
+  const titleSlug = parsed.titleSlug;
   if (!titleSlug) {
-    throw new Error('입력에서 문제 식별자를 찾지 못했어요 — URL/slug/문제 이름/번호 중 하나를 입력해주세요');
+    throw new Error('LeetCode URL에서 titleSlug를 찾지 못했어요 — URL 형식을 확인해주세요');
   }
 
   // 캐시 hit 시 LLM 호출 skip — chip 재클릭 / 같은 문제 다른 언어로 풀 때 즉시 로드

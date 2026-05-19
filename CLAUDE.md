@@ -86,7 +86,9 @@ npm run release            # version patch + push + GitHub Actions
 | 시크릿 UI 노출 X | 유지 | `hasAnthropicKey`/`hasGithubToken` flag만. `.env` 같은 구현 단어 사용자에게 노출 안 함 |
 | .env 저장 위치 분리 | 유지 | dev: 프로젝트 루트, packaged: `userData/.env` (asar read-only 회피) |
 | 시크릿 OS keychain 암호화 | 유지 | Electron `safeStorage`로 macOS Keychain/Windows DPAPI/Linux libsecret. `.env`엔 `ENC:base64` prefix로 저장, `process.env`엔 복호화된 평문. 첫 부팅 시 평문 자동 마이그레이션. canEncrypt() 실패 시 평문 fallback |
-| 숫자 입력 = frontendId 해결 | 유지 | `parseProblemInput`이 ParsedInput 객체 반환 (`isNumericId` flag). main에서 `resolveTitleSlugByFrontendId` 호출 (searchKeywords + 정확 매칭). renderer paste preview는 미리 "문제 #N 으로 검색" 표시 |
+| 입력 = URL only (v1.11+) | 유지 | 사용자 피드백: "숫자 / 문제 이름 입력은 설명도 길어지고 자세히 보기 카드 많아짐 → URL만 받자". 4개 플랫폼 URL 매칭만, 매칭 실패 시 throw + 친절 에러. 옛 `resolveTitleSlugByFrontendId` / 자유 텍스트 slug 정규화는 dead. hint cards도 7개 → 2개로 축소 (지원 URL / 임베드에서 가져오기) |
+| 캐시 schema versioning (v1.11+) | 유지 | 캐시 JSON에 `_schemaVersion` 필드. `CURRENT_SCHEMA` 상수 mismatch면 자동 invalidate. 추출 로직 변경 시마다 bump → 옛 캐시 사용자 마찰 없이 refresh. settings 모달 "번역 캐시 비우기" 버튼으로 수동 invalidate도 가능 |
+| step-3 editor 초기화 (v1.10.2+) | 유지 | handleFetch에서 새 문제 fetch 후 `setEditorCode('')` — 다른 문제 풀이 코드가 그대로 남아 실수로 commit되는 위험 제거. maybeRestoreDraft가 그 다음 호출되어 해당 문제의 draft 있으면 자동 복원 |
 | leetcode.cn URL 인식 (com fallback) | 유지 | cn은 Cloudflare bot protection으로 직접 GraphQL 접근 시 HTTP 403. cn URL 받아도 com endpoint로 fetch (같은 slug 공유). cn-only 문제만 404로 fail. parseProblemInput에서 isCN flag 제거 — 모든 URL이 동일 처리 |
 | 테마: Dark / Light / System (Sepia 제거) | 유지 | 초기엔 Sepia(중간) 포함했으나 사용자 피드백 "너무 이상해" + Dark variant라 가치 모호 → 제거. legacy localStorage 'sepia' 값은 'dark'로 자동 migrate. System은 `matchMedia('(prefers-color-scheme)')` listen해 OS 자동. CSS 변수 분리 + hljs/CodeMirror theme 동기 전환 |
 | 행성 시각 효과 3-layer | 유지 | `.planet-halo`(conic-gradient 회전, 5s) + `.planet-pulse`(radial glow 호흡, 3.5s) + `.planet::before` sparkle(푸른빛↔흰빛↔붉은빛 색조 순환, 5s). Light 모드는 흰빛 halo가 안 보여 따뜻한 brown 그림자로 반전. 사용자가 "살아있는 느낌" 명시 요청 — macOS Siri orb 메타포 |

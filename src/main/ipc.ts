@@ -9,6 +9,7 @@ import { fetchRecentAcceptedSubmission, hasAcceptedSubmission } from '../service
 import { fetchAtcoderSubmission, hasAtcoderAccepted } from '../services/atcoderSubmission';
 import { fetchCodeforcesSubmission, hasCodeforcesAccepted } from '../services/codeforcesSubmission';
 import { fetchProgrammersSubmissionFromWindow } from '../services/programmersSubmission';
+import { clearTranslationCache } from '../services/cache';
 import { Problem } from '../types';
 import { renderMarkdown } from '../services/markdown';
 import { getSettingsView, saveSettings, isKeychainAvailable, AppSettings } from './settings';
@@ -423,6 +424,17 @@ export function registerIpcHandlers() {
       proceed: result.response === 1,
       dontAskAgain: !!result.checkboxChecked,
     };
+  });
+
+  // ── 캐시 전체 비우기 (settings 모달 "캐시 비우기" 버튼) ──
+  // 다음 fetch 시 모든 문제 새로 받아 LLM 다시 호출 → 사용자 명시 클릭 후만
+  ipcMain.handle('clear-translation-cache', async () => {
+    try {
+      const result = await clearTranslationCache();
+      return { ok: true, ...result };
+    } catch (err) {
+      return { ok: false, error: toErrorMessage(err) };
+    }
   });
 
   // ── v0.9 legacy 풀이 자동 마이그레이션 (root NNNN-slug → LeetCode/NNNN-slug) ──

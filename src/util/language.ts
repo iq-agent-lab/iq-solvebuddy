@@ -78,35 +78,29 @@ export async function withRetry<T>(
   throw lastError;
 }
 
-// LeetCode 입력 파싱: URL (모든 형태), slug, 문제 이름, 문제 번호 지원
-// 지원하는 입력 예시:
-//   - https://leetcode.com/problems/two-sum/
-//   - https://leetcode.com/problems/two-sum/description/
-//   - https://leetcode.com/problems/regular-expression-matching/description/?envType=problem-list-v2&envId=depth-first-search
-//   - leetcode.com/problems/two-sum
-//   - leetcode.cn/problems/two-sum         (cn은 Cloudflare 보호로 직접 GraphQL 접근 불가 →
-//                                            com에서 같은 slug로 fetch. 대부분 com/cn slug 공유.
-//                                            cn-only 문제는 404)
-//   - Symmetric Tree         (대소문자/공백 자유)
-//   - symmetric tree
-//   - SYMMETRIC-TREE
-//   - 1, 2024                (숫자만이면 frontendId — leetcode.ts에서 별도 해결)
+// 입력 파싱: 4개 플랫폼 URL만 인식 (v1.11+)
+// 지원 URL:
+//   - LeetCode: leetcode.com/problems/{slug} 또는 leetcode.cn/problems/{slug}
+//                (cn은 Cloudflare로 직접 GraphQL 차단 → com에서 같은 slug fetch)
+//   - 프로그래머스: school.programmers.co.kr/learn/courses/{N}/lessons/{lessonId}
+//   - AtCoder: atcoder.jp/contests/{contestId}/tasks/{taskId}
+//                contestId/taskId 하이픈 허용 (SCPC 등 — scpc2026-div2)
+//   - Codeforces: codeforces.com/contest/{N}/problem/{X}
+//                 또는 codeforces.com/problemset/problem/{N}/{X}
+//
+// 매칭 안 되면 throw — 사용자에게 친절 에러 (placeholder + 펼쳐보기로 안내).
+// 옛 자유 텍스트(문제 이름) / 숫자(frontendId) 입력은 v1.11에서 제거 — 4개 플랫폼이라 URL이 표준.
+
 export interface ParsedInput {
-  /** v1.0+ platform 분기 */
   platform: 'LeetCode' | 'Programmers' | 'AtCoder' | 'Codeforces';
-  /** LeetCode: 정규화된 slug. 숫자 입력이면 빈 문자열 + isNumericId=true */
+  /** LeetCode: titleSlug */
   titleSlug: string;
-  /** LeetCode: 입력이 숫자만인 경우 (예: "1") — frontendId → slug 해결 */
-  isNumericId: boolean;
-  /** LeetCode: isNumericId일 때 원본 숫자 */
-  frontendId: string | null;
-  /** Programmers: lesson ID (URL에서 추출) */
+  /** Programmers: lesson ID */
   lessonId?: string;
-  /** AtCoder: contest ID (예: 'abc300') */
+  /** AtCoder: contest ID + task ID */
   contestId?: string;
-  /** AtCoder: task ID (예: 'abc300_a') */
   taskId?: string;
-  /** Codeforces: index (예: 'A', 'B1') */
+  /** Codeforces: contest ID는 위 contestId 재사용, index 별도 */
   cfIndex?: string;
 }
 
@@ -114,8 +108,6 @@ export function parseProblemInput(input: string): ParsedInput {
   const trimmed = input.trim();
 
   // Codeforces URL — contest 또는 problemset 형식
-  // https://codeforces.com/contest/{contestId}/problem/{index}
-  // https://codeforces.com/problemset/problem/{contestId}/{index}
   const cfContestMatch = trimmed.match(/codeforces\.com\/contest\/(\d+)\/problem\/([A-Z]\d*)/i);
   const cfProblemsetMatch = trimmed.match(/codeforces\.com\/problemset\/problem\/(\d+)\/([A-Z]\d*)/i);
   const cfMatch = cfContestMatch || cfProblemsetMatch;
@@ -125,14 +117,10 @@ export function parseProblemInput(input: string): ParsedInput {
       contestId: cfMatch[1],
       cfIndex: cfMatch[2].toUpperCase(),
       titleSlug: '',
-      isNumericId: false,
-      frontendId: null,
     };
   }
 
   // AtCoder URL — atcoder.jp 고유
-  // https://atcoder.jp/contests/{contestId}/tasks/{taskId}
-  // contestId/taskId에 하이픈 허용 (예: scpc2026-div2, scpc2026_div2_g) — SCPC 등 일부 콘테스트
   const acMatch = trimmed.match(/atcoder\.jp\/contests\/([a-z0-9_-]+)\/tasks\/([a-z0-9_-]+)/i);
   if (acMatch) {
     return {
@@ -140,57 +128,34 @@ export function parseProblemInput(input: string): ParsedInput {
       contestId: acMatch[1].toLowerCase(),
       taskId: acMatch[2].toLowerCase(),
       titleSlug: '',
-      isNumericId: false,
-      frontendId: null,
     };
   }
 
-  // Programmers URL — 가장 먼저 체크
-  // https://school.programmers.co.kr/learn/courses/{courseId}/lessons/{lessonId}
+  // Programmers URL
   const progMatch = trimmed.match(/programmers\.co\.kr\/learn\/courses\/\d+\/lessons\/(\d+)/i);
   if (progMatch) {
     return {
       platform: 'Programmers',
       lessonId: progMatch[1],
       titleSlug: '',
-      isNumericId: false,
-      frontendId: null,
     };
   }
 
-  // LeetCode 숫자만 — frontendId로 해결
-  if (/^\d+$/.test(trimmed)) {
+  // LeetCode URL — com/cn 동일 처리
+  const lcMatch = trimmed.match(/leetcode\.(?:com|cn)\/problems\/([a-zA-Z0-9-]+)/i);
+  if (lcMatch) {
     return {
       platform: 'LeetCode',
-      titleSlug: '',
-      isNumericId: true,
-      frontendId: trimmed,
+      titleSlug: lcMatch[1].toLowerCase(),
     };
   }
 
-  // LeetCode URL 매칭 — com/cn 동일 처리 (com에서 fetch)
-  const urlPattern = /leetcode\.(?:com|cn)\/problems\/([a-zA-Z0-9-]+)/i;
-  const urlMatch = trimmed.match(urlPattern);
-  if (urlMatch) {
-    return {
-      platform: 'LeetCode',
-      titleSlug: urlMatch[1].toLowerCase(),
-      isNumericId: false,
-      frontendId: null,
-    };
-  }
-
-  // 자유 텍스트 → LeetCode slug 정규화 (default platform)
-  const slug = trimmed
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return {
-    platform: 'LeetCode',
-    titleSlug: slug,
-    isNumericId: false,
-    frontendId: null,
-  };
+  // 매칭 실패 — 친절 에러
+  throw new Error(
+    '문제 URL을 입력해주세요. 지원하는 형식:\n' +
+      '· LeetCode — https://leetcode.com/problems/two-sum/\n' +
+      '· 프로그래머스 — https://school.programmers.co.kr/learn/courses/30/lessons/12345\n' +
+      '· AtCoder — https://atcoder.jp/contests/abc300/tasks/abc300_a\n' +
+      '· Codeforces — https://codeforces.com/problemset/problem/1234/A'
+  );
 }

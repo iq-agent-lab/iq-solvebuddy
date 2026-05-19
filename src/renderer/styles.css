@@ -571,6 +571,11 @@ html.theme-light .planet-pulse {
   color: var(--accent-soft);
 }
 
+.paste-preview .preview-invalid {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
 .paste-preview .preview-cn {
   font-size: 10px;
   color: var(--text-dim);
