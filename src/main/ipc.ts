@@ -374,7 +374,7 @@ export function registerIpcHandlers() {
       title: 'LeetCode Accepted submission이 없어요',
       message: `이 문제("${titleSlug}")에 Accepted submission이 없어요.`,
       detail:
-        'iq-solvebuddy는 통과한 풀이를 학습 자산화하는 도구입니다.\n\n' +
+        'Solve Buddy는 통과한 풀이를 학습 자산화하는 도구입니다.\n\n' +
         'LeetCode에서 먼저 풀이를 통과시키는 게 권장 흐름이지만, ' +
         '본인이 다른 곳에서 풀었거나 의도된 업로드라면 그대로 진행 가능합니다.\n\n' +
         '풀이 레포 관리는 사용자 자유.',

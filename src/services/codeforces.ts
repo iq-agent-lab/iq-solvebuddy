@@ -172,6 +172,40 @@ function extractExamples(_$: cheerio.CheerioAPI): string {
   return '';
 }
 
+// Contest의 Division 번호 추출 — rating 없을 때 fallback에 활용
+// CF contest 페이지 어디에든 "Codeforces Round 945 (Div. 2)" 같은 패턴이 있음.
+// .rtable, .caption, .left, page title 등 여러 곳 시도 + raw HTML fallback.
+//
+// CF rating 가이드 (사용자 제공):
+//   Div.4: 가장 쉬움 (C번도 단순 그리디)
+//   Div.3: 초중급 (C, D번부터 BFS/DFS, 단순 DP)
+//   Div.2: 대중적 (A,B 애드혹/수학, C부터 알고리즘 체급)
+//   Div.1: 고수 전용 (A번이 Div.2 C-D 수준)
+//
+// 표시: "Div.2 C" 형태. rating 있으면 rating 우선 사용.
+function extractDivision($: cheerio.CheerioAPI, rawHtml: string): string | null {
+  // 1) DOM selector — sidebar의 contest 제목
+  const candidates = [
+    '.rtable a[href*="/contest/"]',
+    '.caption.titled',
+    'a[href*="/contest/"]:contains("Div")',
+    'th.left',
+    'title',
+  ];
+  for (const sel of candidates) {
+    const elements = $(sel);
+    for (let i = 0; i < elements.length; i++) {
+      const t = $(elements[i]).text();
+      const m = t.match(/Div\.?\s*(\d)/i);
+      if (m) return `Div.${m[1]}`;
+    }
+  }
+  // 2) raw HTML
+  const m = rawHtml.match(/Div\.?\s*(\d)/i);
+  if (m) return `Div.${m[1]}`;
+  return null;
+}
+
 export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise<CodeforcesProblem> {
   // problemset URL이 더 안정적 (contest URL은 진행 중이면 차단)
   const url = `${BASE_URL}/problemset/problem/${ref.contestId}/${ref.index}`;
@@ -218,6 +252,20 @@ export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise
   const { rating, tags } = extractRatingAndTags($, html);
   const exampleTestcases = extractExamples($);
 
+  // 난이도 결정 — rating 있으면 그대로, 없으면 Division + index로 fallback
+  // 예: rating "★1500" / fallback "Div.2 C" / 둘 다 없으면 "?"
+  let difficulty: string;
+  if (rating !== '?') {
+    difficulty = rating;
+  } else {
+    const div = extractDivision($, html);
+    if (div) {
+      difficulty = `${div} ${ref.index}`;
+    } else {
+      difficulty = '?';
+    }
+  }
+
   // tag → LeetCodeTag 형태로 변환 (Problem union이 같은 구조 공유)
   const topicTags = tags.map((name) => ({
     name,
@@ -237,7 +285,7 @@ export async function fetchCodeforcesProblem(ref: CodeforcesProblemRef): Promise
     title,
     titleSlug: slug,
     content,
-    difficulty: rating,
+    difficulty,
     exampleTestcases,
     topicTags,
     codeSnippets: [],

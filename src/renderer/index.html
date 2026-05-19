@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; script-src 'self'">
-  <title>iq-solvebuddy</title>
+  <title>Solve Buddy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -196,7 +196,7 @@
   </main>
 
   <footer class="app-footer">
-    <span>iq-agent-lab · v1.6.3</span>
+    <span>iq-agent-lab · v1.7.0</span>
     <span class="footer-divider">·</span>
     <span id="config-status">설정 확인 중...</span>
     <span class="footer-divider">·</span>
@@ -255,8 +255,8 @@
             <ol>
               <li>
                 아래 링크를 클릭하면 <strong>scope가 미리 체크된 발급 페이지</strong>가 열림:<br>
-                <a href="https://github.com/settings/tokens/new?scopes=repo&description=iq-solvebuddy" target="_blank" rel="noopener" class="help-link">
-                  → 새 PAT 발급하기 (repo scope, "iq-solvebuddy" description 미리 입력)
+                <a href="https://github.com/settings/tokens/new?scopes=repo&description=Solve%20Buddy" target="_blank" rel="noopener" class="help-link">
+                  → 새 PAT 발급하기 (repo scope, "Solve Buddy" description 미리 입력)
                 </a>
               </li>
               <li><strong>Expiration</strong>: 본인 보안 정책에 맞춰. 'No expiration'도 OK (개인 도구 한정).</li>
@@ -277,7 +277,7 @@
           </label>
           <label class="settings-field">
             <span class="settings-label">Repository (풀이가 올라갈 레포 이름)</span>
-            <input type="text" id="setting-github-repo" placeholder="leetcode-solutions" autocomplete="off">
+            <input type="text" id="setting-github-repo" placeholder="algorithm-solutions" autocomplete="off">
           </label>
           <label class="settings-field">
             <span class="settings-label">Branch</span>
@@ -356,6 +356,15 @@
           <p class="stats-empty-hint">문제를 풀고 GitHub에 업로드하면 자동으로 누적됩니다.<br>또는 위 <strong>↻ GitHub 동기화</strong> 버튼으로 풀이 레포의 인덱스에서 가져올 수 있어요.</p>
         </div>
         <div id="stats-content">
+          <!-- 플랫폼 탭 — 각 플랫폼이 난이도 기준 다르므로 분리 (LC: Easy/Med/Hard, PG: Lv, AC: 점수, CF: rating) -->
+          <div class="stats-tabs" id="stats-tabs">
+            <button type="button" class="stats-tab active" data-platform="all">전체</button>
+            <button type="button" class="stats-tab" data-platform="LeetCode">LeetCode</button>
+            <button type="button" class="stats-tab" data-platform="Programmers">프로그래머스</button>
+            <button type="button" class="stats-tab" data-platform="AtCoder">AtCoder</button>
+            <button type="button" class="stats-tab" data-platform="Codeforces">Codeforces</button>
+          </div>
+
           <!-- 요약 카드 -->
           <div class="stats-summary">
             <div class="stats-card">
@@ -376,7 +385,7 @@
             </div>
           </div>
 
-          <h3 class="stats-section-title">난이도 분포</h3>
+          <h3 class="stats-section-title" id="stats-difficulty-title">난이도 분포</h3>
           <div class="stats-bars" id="stats-difficulty"></div>
 
           <h3 class="stats-section-title">언어 분포</h3>

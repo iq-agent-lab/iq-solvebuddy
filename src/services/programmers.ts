@@ -11,11 +11,18 @@
 // 실패 시 친절 에러로 fallback.
 
 import * as cheerio from 'cheerio';
-import { session } from 'electron';
+import { session, BrowserWindow } from 'electron';
 import { ProgrammersProblem } from '../types';
 
 const BASE_URL = 'https://school.programmers.co.kr';
 const PARTITION = 'persist:programmers';
+
+// 임베드 윈도우 getter — main/index.ts에서 setProgrammersWindowGetterForLevel 호출
+// 페이지 HTML이 SPA라 정적 level 추출 어려운 케이스에 webContents.executeJavaScript로 fallback
+let _windowGetter: (() => BrowserWindow | null) | null = null;
+export function setProgrammersWindowGetterForLevel(fn: () => BrowserWindow | null) {
+  _windowGetter = fn;
+}
 
 const COMMON_HEADERS = {
   'User-Agent':
@@ -330,6 +337,50 @@ function extractExampleTestcases($: cheerio.CheerioAPI, contentHtml: string): st
   return rows.join('\n');
 }
 
+// 임베드 윈도우의 client-rendered DOM에서 level 추출
+// PG는 SPA — 정적 HTML엔 .level-active가 없을 수 있음
+// 임베드가 해당 lessonId 페이지에 있으면 JS 실행으로 정확한 level 가져옴
+async function extractLevelFromEmbed(lessonId: string): Promise<string | null> {
+  if (!_windowGetter) return null;
+  const win = _windowGetter();
+  if (!win || win.isDestroyed()) return null;
+  const currentUrl = win.webContents.getURL();
+  // 같은 lessonId 페이지에 있어야 정확함
+  const urlPattern = new RegExp(`/learn/courses/\\d+/lessons/${lessonId}(?:[/?#]|$)`);
+  if (!urlPattern.test(currentUrl)) return null;
+
+  try {
+    const count = (await win.webContents.executeJavaScript(
+      `
+      (function() {
+        // 1) .level-active 별 count (active 상태 별 아이콘 수 = Lv 숫자)
+        var active = document.querySelectorAll('.level-active').length;
+        if (active > 0 && active <= 5) return active;
+        // 2) data-level attribute
+        var dataLv = document.querySelector('[data-level]');
+        if (dataLv) {
+          var v = parseInt(dataLv.getAttribute('data-level'), 10);
+          if (v >= 1 && v <= 5) return v;
+        }
+        // 3) text 패턴 (Lv. 3 등)
+        var bodyText = document.body && document.body.innerText || '';
+        var m = bodyText.match(/(?:Lv\\.?|레벨)\\s*(\\d)/);
+        if (m) {
+          var n = parseInt(m[1], 10);
+          if (n >= 1 && n <= 5) return n;
+        }
+        return 0;
+      })()
+      `,
+      true
+    )) as number;
+    if (count >= 1 && count <= 5) return `Lv ${count}`;
+  } catch {
+    // silent
+  }
+  return null;
+}
+
 // 페이지 HTML을 fetch — 임베드 cookies 우선 사용 (Lv 3+ 로그인 필요 문제 대응)
 // cookies 없거나 본문 못 받으면 비로그인 fetch fallback
 async function fetchProgrammersHtml(url: string): Promise<{ html: string; usedCookies: boolean }> {
@@ -379,7 +430,13 @@ export async function fetchProgrammersProblem(lessonId: string): Promise<Program
     throw new Error(`프로그래머스 페이지에서 문제 본문을 찾을 수 없어요 — ${loginHint}`);
   }
 
-  const difficulty = extractDifficulty($, html);
+  // 1) HTML 정적 추출 시도
+  let difficulty = extractDifficulty($, html);
+  // 2) 'Lv ?'면 임베드 윈도우에서 client-rendered DOM JS 추출 (SPA initial state 우회)
+  if (difficulty === 'Lv ?') {
+    const fromEmbed = await extractLevelFromEmbed(lessonId);
+    if (fromEmbed) difficulty = fromEmbed;
+  }
   const codeSnippets = extractCodeSnippets($);
   const exampleTestcases = extractExampleTestcases($, content);
 
