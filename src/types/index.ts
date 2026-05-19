@@ -240,6 +240,12 @@ export interface IqApi {
     }>
   >;
   clearTranslationCache: () => Promise<IpcResult<{ removed: number }>>;
+  statsPushGist: (
+    payload: { json: string; gistId: string | null }
+  ) => Promise<IpcResult<{ gistId: string; url: string; size: number }>>;
+  statsPullGist: (
+    payload: { gistId: string | null }
+  ) => Promise<IpcResult<{ solutionsJson: string | null; gistId: string | null }>>;
   createRepo: () => Promise<IpcResult<CreateRepoResult>>;
   verifyGithub: () => Promise<IpcResult<VerifyResult>>;
   onFetchProgress: (cb: (stage: string) => void) => () => void;

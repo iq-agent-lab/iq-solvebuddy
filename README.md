@@ -6,7 +6,7 @@
 
 iq-agent-lab 행성 중 하나. 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
-**현재 버전: v1.10.1** — 🎉 **4개 플랫폼 풀 패리티 + 통과 무결성**. 4개 플랫폼 모두 임베드 윈도우 + submission 자동 fetch. Accepted 사전 확인은 LC/AC/CF 지원. 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
+**현재 버전: v1.12.0** — 🎉 **4개 플랫폼 풀 패리티 + 통과 무결성 + 디바이스 sync**. 4개 플랫폼 모두 임베드 윈도우 + submission 자동 fetch. Accepted 사전 확인 LC/AC/CF. Gist 백업으로 디바이스 간 통계 동기. CodeMirror 검색/fold. 임베드 윈도우 추상화로 main/index.ts 절반으로 축소. 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
 
 ### 이름 진화 — 모든 사용자 데이터 호환 유지
 
@@ -753,18 +753,27 @@ iq-solvebuddy/
   - AC: `/submissions/me?f.Status=AC` 가벼운 fetch (detail 안 호출)
   - CF: `/contest/{N}/my` browserFetch + cookies 재사용
 - [x] **AtCoder URL 하이픈 허용** — `scpc2026-div2` 같은 contestId 정규식 fix
-- [x] **PG `Lv ?` 메타 헤더에서 숨김** — 잡힐 때만 표시 (cheerio + 임베드 + hidden 3-tier로도 못 잡는 케이스)
-- [x] **AC 색깔 best-effort** — kenkoooo.com에 model 없는 문제는 점수만 표시 (의도된 fallback)
+- [x] **PG `Lv ?` 메타 헤더에서 숨김** — 잡힐 때만 표시
+- [x] **AC 색깔 best-effort** — kenkoooo.com에 model 없는 문제는 점수만
+- [x] **step-3 editor 자동 초기화** (v1.10.2) — 다른 문제 코드 실수 commit 방지
 
-### 다음 후보
+### v1.11.x (완료) — Input URL only + 캐시 schema + UX 다듬기
 
-- [ ] **회고 prompt 사용자 customize** — settings에서 회고 형식 자유 입력 (간결/상세 등)
-- [ ] **풀이 통계 native sync** — localStorage → gist 백업 (디바이스 간 sync)
-- [ ] **CodeMirror addons** — 검색 UI(panel), 코드 fold, line wrapping toggle
+- [x] **Input URL-only** — 숫자/자유 텍스트 입력 제거, 4개 플랫폼 URL만 (사용자: "자동화 핵심 깨질 위험 + 설명 너무 길어짐")
+- [x] **펼쳐보기 hint cards 7개 → 2개** (지원 플랫폼 URL + 임베드에서 가져오기)
+- [x] **paste preview에 invalid hint** — URL 아닌 입력 시 친절 안내
+- [x] **캐시 schema versioning** — `_schemaVersion` 필드. mismatch면 자동 refresh. settings에 "번역 캐시 비우기" 버튼
+- [x] **풀이 통계 backfill 검증** — 4개 플랫폼 모두 정상. 결과에 platform별 breakdown (LC:3 · AC:1 · CF:1)
+
+### v1.12.x (완료) — 마무리 사이클 (CM addons / Gist sync / 임베드 추상화)
+
+- [x] **CodeMirror addons** — 검색 (Cmd+F dialog) · 코드 fold (gutter 아이콘) · line wrap toggle (settings)
+- [x] **Gist 백업 디바이스 간 sync** — stats 모달 "☁ Gist 백업" 버튼. localStorage solutions → private gist push/pull merge (newest savedAt wins). PAT에 gist scope 필요
+- [x] **임베드 윈도우 추상화** — 4개 플랫폼 공통 로직을 `src/main/embedWindow.ts`의 `EmbedController`로 통합. main/index.ts 1100 → 580 lines 절반 축소. 미래 5번째 플랫폼 추가가 config 한 개로 끝남
+
+### 다음 후보 (대부분 마무리)
+
 - [ ] **백준 BOJ (Phase 5)** — 보류 (서버 종료 이슈). 향후 재개 시 진행
-
-### 장기
-
 - [ ] 풀이 레포 RAG 검색 — "DP 문제 중 비슷한 것" 같은 자연어 검색
 - [ ] iq-blogger 연동 — RETROSPECTIVE → 블로그 포스트 자동 변환
 

@@ -10,6 +10,7 @@ import { fetchAtcoderSubmission, hasAtcoderAccepted } from '../services/atcoderS
 import { fetchCodeforcesSubmission, hasCodeforcesAccepted } from '../services/codeforcesSubmission';
 import { fetchProgrammersSubmissionFromWindow } from '../services/programmersSubmission';
 import { clearTranslationCache } from '../services/cache';
+import { pushStatsToGist, pullStatsFromGist } from '../services/gistSync';
 import { Problem } from '../types';
 import { renderMarkdown } from '../services/markdown';
 import { getSettingsView, saveSettings, isKeychainAvailable, AppSettings } from './settings';
@@ -424,6 +425,27 @@ export function registerIpcHandlers() {
       proceed: result.response === 1,
       dontAskAgain: !!result.checkboxChecked,
     };
+  });
+
+  // ── 풀이 통계 gist sync (v1.12+) ──
+  // push: localStorage 'iq-leetbuddy:solutions' JSON → 사용자 private gist
+  // pull: gist에서 가져옴 (gistId 알면 직접, 없으면 description으로 검색)
+  ipcMain.handle('stats-push-gist', async (_event, payload: { json: string; gistId: string | null }) => {
+    try {
+      const result = await pushStatsToGist(payload.json, payload.gistId);
+      return { ok: true, ...result };
+    } catch (err) {
+      return { ok: false, error: toErrorMessage(err) };
+    }
+  });
+
+  ipcMain.handle('stats-pull-gist', async (_event, payload: { gistId: string | null }) => {
+    try {
+      const result = await pullStatsFromGist(payload.gistId);
+      return { ok: true, ...result };
+    } catch (err) {
+      return { ok: false, error: toErrorMessage(err) };
+    }
   });
 
   // ── 캐시 전체 비우기 (settings 모달 "캐시 비우기" 버튼) ──
