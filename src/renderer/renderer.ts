@@ -271,7 +271,7 @@ async function checkConfig(): Promise<void> {
       scEl.textContent = `${display} 으로 어디서든 호출`;
       // step 2 hint도 함께 갱신
       const hint = $('step-2-hint');
-      hint.innerHTML = `읽고 LeetCode에서 풀어. 풀고 나면 <kbd>${display}</kbd>로 돌아와.`;
+      hint.innerHTML = `읽고 원문 사이트에서 풀어. 풀고 나면 <kbd>${display}</kbd>로 돌아와.`;
     } else {
       scEl.textContent = '단축키 등록 실패';
     }
