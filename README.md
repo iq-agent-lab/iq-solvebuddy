@@ -1,16 +1,31 @@
 # 🪐 Solve Buddy
 
 > *a small companion in the iq-agent-lab system.*
->
-> v0.x~v0.9: `iq-leetbuddy` · v1.0~v1.6: `iq-solvebuddy` · **v1.7+: `Solve Buddy`** — 이름이 진화한 만큼 멀티 플랫폼 학습 도구로 성장. 사용자 데이터(API 키 / 캐시 / 풀이 통계 / draft)는 모든 버전 간 호환 유지 (userData 폴더 / localStorage key 불변).
 
 **LeetCode + 프로그래머스 + AtCoder + Codeforces** 문제 풀이를 **한국어로 정리**해 보여주고, 통과한 코드에 **AI 회고**를 붙여 **GitHub에 자동 정리**하는 데스크톱 에이전트.
 
 iq-agent-lab 행성 중 하나. 매일 문제 풀이를 *기록 가능한 학습 자산*으로 바꾸는 것이 이 행성의 일.
 
-**현재 버전: v1.7.0** — 🎉 **4개 플랫폼 풀 패리티**. LeetCode / 프로그래머스 / AtCoder / Codeforces 모두 임베드 윈도우 + submission 자동 fetch. **통계 dashboard 플랫폼별 탭** (난이도 기준 분리). 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
+**현재 버전: v1.10.1** — 🎉 **4개 플랫폼 풀 패리티 + 통과 무결성**. 4개 플랫폼 모두 임베드 윈도우 + submission 자동 fetch. Accepted 사전 확인은 LC/AC/CF 지원. 백준(BOJ)은 보류. 자세한 진척은 [로드맵](#로드맵) 참조.
 
-> 플랫폼별 statement 정책: **LeetCode/AtCoder/Codeforces**는 영어 원문 → 한국어 번역. **프로그래머스**는 한국어 원문 → 정리만 (HTML→마크다운). **AtCoder**는 영어 우선 + 일본어 fallback. **Codeforces**는 rating 없으면 `Div.X 인덱스`로 표시 (예: `Div.2 C`).
+### 이름 진화 — 모든 사용자 데이터 호환 유지
+
+| 버전 | 이름 | 비고 |
+|---|---|---|
+| v0.x – v0.9 | iq-leetbuddy | LeetCode 전용 시절 |
+| v1.0 – v1.6 | iq-solvebuddy | 멀티 플랫폼 rename |
+| v1.7+ | **Solve Buddy** | 현재 — `.app` 이름까지 변경 |
+
+userData 폴더(`iq-leetbuddy`) · localStorage key · GitHub README marker — 모두 옛 이름 유지 (사용자 데이터 / 풀이 레포 인덱스 호환).
+
+### 플랫폼별 statement 정책
+
+| 플랫폼 | 원문 | 처리 | 비고 |
+|---|---|---|---|
+| **LeetCode** | 영어 | Claude LLM 번역 (streaming) | tags 표시 |
+| **AtCoder** | 영어/일본어 | Claude LLM 번역 (영어 우선) | KaTeX 수식 + AtCoder Problems 색깔 (회색 → 갈색 → 녹색 → 청색 → 황색 → 주황 → 적색 → 레전드) |
+| **Codeforces** | 영어 | Claude LLM 번역 | ★rating + algorithm tags. rating 없으면 `Div.X 인덱스` (예: `Div.2 C`) |
+| **프로그래머스** | 한국어 | **cheerio + turndown 직접 변환 (LLM 호출 없음)** | 표 / 수식 / 이미지 자동. SQL 문제도 동일 |
 
 ---
 
@@ -105,30 +120,41 @@ rm -f ~/Downloads/Solve.Buddy-*-mac.zip
 ## 무엇을 하는가
 
 ```
-01 ─ 문제 던지기 (4개 플랫폼 URL · slug · 이름 · 번호 모두 자유)
-       LeetCode / 프로그래머스 / AtCoder / Codeforces
-       또는 임베드 chip · 최근 풀이 chip · 보조 버튼
+01 ─ 문제 던지기
+       4개 플랫폼 URL · slug · 이름 · 번호 — 어떤 형식이든 자동 분기
+       또는 임베드 chip · 최근 풀이 chip (플랫폼 badge 표시)
 
-02 ─ Claude streaming 정리 (한국어 마크다운)
-       LeetCode/AtCoder/CF: 영어 → 한국어 번역 (이미지·수식·예시 보존)
-       프로그래머스: 한국어 원문 정리만 (번역 X)
+02 ─ 정리 (한국어 마크다운)
+       LeetCode/AtCoder/CF: Claude streaming 번역 (이미지·수식·예시 보존)
+       프로그래머스: cheerio + turndown 즉시 변환 (LLM 호출 없음, ~10ms)
        시작 코드 lang 자동 매핑 (마지막 선택 언어 기억)
 
 03 ─ 원문 사이트에서 직접 풀고 통과 받기
-       임베드 윈도우는 영속 세션 — 한 번 로그인하면 다음에도 유지
-       4개 플랫폼 모두 임베드 윈도우 + submission 자동 fetch
+       4개 플랫폼 모두 임베드 윈도우 (persist:* 영속 세션)
+       headeR 플랫폼 아이콘 4개 — 한 번 로그인하면 다음에도 유지
 
 04 ─ 통과 코드 입력 (CodeMirror 5 에디터)
        임베드에서 "최근 통과 코드 자동 가져오기" 버튼으로 한 클릭
-       또는 직접 붙여넣기
+       - LeetCode: GraphQL submissionList
+       - AtCoder: /submissions/me?f.Status=AC 스크래핑
+       - Codeforces: /contest/{N}/my 스크래핑 (browserFetch Cloudflare 우회)
+       - 프로그래머스: 임베드 ace editor 값 직접 추출
 
-05 ─ Claude streaming 회고
+05 ─ 업로드 전 통과 확인 (LC/AC/CF — 옵션)
+       Accepted submission 있는지 사전 체크 → 없으면 dialog override
+       프로그래머스는 사전 확인 미지원 (AC 개념 없음)
+
+06 ─ Claude streaming 회고
        알고리즘 로직 100% 동일 유지 (재해석)
        의미 있는 변수명 + 한국어 한 줄 주석
        복잡도 + 대안 접근 + 비슷한 문제 추천
 
-06 ─ 단일 atomic commit으로 GitHub 업로드 + root README 인덱스 자동 갱신
-       {Platform}/{problemId}-{slug}/   (LeetCode/0001-two-sum/, AtCoder/abc300_a-name/, ...)
+07 ─ 단일 atomic commit으로 GitHub 업로드 + root README 인덱스 자동 갱신
+       {Platform}/{problemId}-{slug}/
+         예: LeetCode/0001-two-sum/
+             AtCoder/abc300_a-n-choice-question/
+             Codeforces/1234-A-two-pointers/
+             Programmers/12345-기차-선로/
          ├── README.md            (한국어 정리, 공통 — 중복 skip)
          └── {language}/
              ├── solution.{ext}    (통과 코드)
@@ -695,21 +721,50 @@ iq-solvebuddy/
 - [x] **pull-embed-btn 4-tier fallback** — LeetCode → AtCoder → Codeforces → Programmers
 - [x] **`open-platform-site` IPC 사라짐** — 4개 플랫폼 모두 임베드라 외부 브라우저 fallback 채널 불필요 (legacy noop만 유지)
 
-### v1.7+ (다음 후보) — 다듬기
+### v1.7.x (완료) — Solve Buddy 이름 + UX 다듬기
 
-- [ ] **AtCoder/CF/Programmers Accepted 사전 확인** — LeetCode 패턴 적용. 풀이 업로드 전 통과 여부 확인 → 없으면 dialog override
+- [x] **앱 이름 "Solve Buddy"** — productName / window title / tray / dock / .app 파일명 모두. userData 폴더는 `iq-leetbuddy` 그대로 (모든 버전 데이터 호환)
+- [x] **CF rating 3-tier fallback** — `.tag-box` cheerio → raw HTML regex → page-wide `*NNN` 검사
+- [x] **CF Division + index fallback** — rating 없으면 contest 이름의 `(Div. 2)` 추출 → `Div.2 C` 표시
+- [x] **PG level 임베드 JS fallback** — 정적 HTML / 임베드 ace mode / hidden BrowserWindow 3-tier
+- [x] **통계 dashboard 플랫폼 탭** — 전체 / LC / PG / AC / CF — 각 플랫폼 난이도 기준 분리
+- [x] **최근 chip + 통계에 플랫폼 색깔 abbr badge** — LC/PG/AC/CF 한눈에 구별
+- [x] **캐시 stale auto-invalidation** — 옛 fix 이전 캐시 (`?` / `Lv ?` 등)는 자동 refresh
+- [x] **CF heading 공백** — `2228D` → `2228 D` (가독성)
+- [x] **AtCoder heading taskId 제거** — `abc458_a. Chompers` → `Chompers` (메타 줄에서 별도 표시)
+- [x] **수식 KaTeX nonStandard 모드** — 한국어 (`$1$부터`) 같은 boundary 대응
+
+### v1.8.x (완료) — 프로그래머스 LLM 호출 제거
+
+- [x] **cheerio + turndown 직접 변환** — Programmers는 한국어 원문이라 LLM 번역 불필요 → API 호출 자체 제거 (5초+ → 즉시 ~10ms)
+- [x] **turndown-plugin-gfm** — 표 / 이미지 / 수식 / 리스트 / 코드 모두 1:1 변환
+- [x] **다른 플랫폼은 그대로** LLM (영어→한국어 번역 필수)
+
+### v1.9.x (완료) — 메타데이터 정교화 + 검색
+
+- [x] **AtCoder difficulty 색깔 체계** — AtCoder Problems 표준 (회색<400 / 갈색<800 / 녹색<1200 / 청색<1600 / 황색<2000 / 주황<2400 / 적색<2800 / 레전드). 표기: `300점 · 🟢 녹색 (920)`
+- [x] **PG level 3-tier 강화** — hidden BrowserWindow + `executeJsOnPage` (SPA hydration 후 추출)
+- [x] **풀이 검색** — stats 모달 검색창 (제목/슬러그/언어/번호 부분일치). 검색어 있으면 전체 풀이에서 필터
+
+### v1.10.x (완료) — Accepted 사전 확인 확장 + 미세 fix
+
+- [x] **Accepted 사전 확인 → LC / AC / CF** (PG는 AC 개념 없어 미지원)
+  - LC: GraphQL submissionList (기존)
+  - AC: `/submissions/me?f.Status=AC` 가벼운 fetch (detail 안 호출)
+  - CF: `/contest/{N}/my` browserFetch + cookies 재사용
+- [x] **AtCoder URL 하이픈 허용** — `scpc2026-div2` 같은 contestId 정규식 fix
+- [x] **PG `Lv ?` 메타 헤더에서 숨김** — 잡힐 때만 표시 (cheerio + 임베드 + hidden 3-tier로도 못 잡는 케이스)
+- [x] **AC 색깔 best-effort** — kenkoooo.com에 model 없는 문제는 점수만 표시 (의도된 fallback)
+
+### 다음 후보
+
 - [ ] **회고 prompt 사용자 customize** — settings에서 회고 형식 자유 입력 (간결/상세 등)
-- [ ] **풀이 검색** — stats 모달 안 search box (100개 이상 누적 시 필요)
-- [ ] **백준 BOJ (Phase 5)** — 보류 (서버 종료 이슈). 향후 재개 시 진행
-
-- [ ] **풀이 통계 native sync** — better-sqlite3 또는 localStorage → gist 백업 (디바이스 간 sync)
+- [ ] **풀이 통계 native sync** — localStorage → gist 백업 (디바이스 간 sync)
 - [ ] **CodeMirror addons** — 검색 UI(panel), 코드 fold, line wrapping toggle
-- [ ] **회고 prompt 사용자 customize** — 회고 형식 사용자 정의 (간결/상세 등)
-- [ ] **풀이 검색** — stats 모달 안 search box (100개 이상 누적 시 필요)
+- [ ] **백준 BOJ (Phase 5)** — 보류 (서버 종료 이슈). 향후 재개 시 진행
 
 ### 장기
 
-- [ ] 다른 OJ 지원 (Codeforces, BOJ)
 - [ ] 풀이 레포 RAG 검색 — "DP 문제 중 비슷한 것" 같은 자연어 검색
 - [ ] iq-blogger 연동 — RETROSPECTIVE → 블로그 포스트 자동 변환
 
