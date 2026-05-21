@@ -1,240 +1,148 @@
 #!/usr/bin/env python3
-"""Generate iq-leetbuddy macOS app icon (1024x1024).
-Design: squircle background + coral planet with shading + orbital ring + satellite.
+"""Generate the Solve Buddy app icon.
+
+Design: dark glass squircle + faceted solve-stone + soft orbital spark.
+No third-party Python dependency is required; macOS `sips` renders the SVG.
 """
 
-from PIL import Image, ImageDraw, ImageFilter
-import math
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 
 SIZE = 1024
-CORNER_RADIUS = 230  # macOS-style rounded square
-
-# Brand colors (mirrors src/renderer/styles.css)
-BG_DARK = (15, 13, 11)
-BG_ELEVATED = (21, 19, 15)
-CORAL = (204, 120, 92)
-CORAL_LIGHT = (220, 145, 120)
-CORAL_DEEP = (138, 74, 54)
-SATELLITE = (240, 235, 222)
 
 
-def make_squircle_mask(size: int, radius: int) -> Image.Image:
-    """Rounded square mask (approximates macOS squircle)."""
-    mask = Image.new('L', (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, size - 1, size - 1], radius=radius, fill=255
-    )
-    return mask
+def require_sips() -> str:
+    sips = shutil.which('sips')
+    if not sips:
+        raise SystemExit('macOS `sips` is required to render the app icon PNGs.')
+    return sips
 
 
-def make_background(size: int) -> Image.Image:
-    """Warm dark gradient background with subtle vignette."""
-    bg = Image.new('RGB', (size, size), BG_DARK)
-    pixels = bg.load()
-    cx, cy = size / 2, size / 2
-    max_d = (cx ** 2 + cy ** 2) ** 0.5
-    for y in range(size):
-        for x in range(size):
-            # subtle radial gradient: center lighter, edges darker
-            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / max_d
-            r = int(BG_ELEVATED[0] + (BG_DARK[0] - BG_ELEVATED[0]) * d)
-            g = int(BG_ELEVATED[1] + (BG_DARK[1] - BG_ELEVATED[1]) * d)
-            b = int(BG_ELEVATED[2] + (BG_DARK[2] - BG_ELEVATED[2]) * d)
-            pixels[x, y] = (r, g, b)
-    return bg.convert('RGBA')
+def icon_svg() -> str:
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{SIZE}" height="{SIZE}" viewBox="0 0 {SIZE} {SIZE}">
+  <defs>
+    <clipPath id="squircle">
+      <rect width="{SIZE}" height="{SIZE}" rx="230" ry="230"/>
+    </clipPath>
+    <linearGradient id="bg" x1="128" y1="24" x2="920" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#191426"/>
+      <stop offset="0.48" stop-color="#0f0d18"/>
+      <stop offset="1" stop-color="#07060c"/>
+    </linearGradient>
+    <linearGradient id="auraA" x1="56" y1="116" x2="836" y2="636" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9b7cff" stop-opacity="0"/>
+      <stop offset="0.35" stop-color="#9b7cff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#9b7cff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="auraB" x1="1048" y1="296" x2="164" y2="884" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#72d7cf" stop-opacity="0"/>
+      <stop offset="0.46" stop-color="#72d7cf" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#72d7cf" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="auraC" x1="188" y1="940" x2="940" y2="292" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8866f" stop-opacity="0"/>
+      <stop offset="0.56" stop-color="#d8866f" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#d8866f" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="2" seed="12"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.032"/>
+      </feComponentTransfer>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="34" stdDeviation="26" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <filter id="softBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="13"/>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect width="{SIZE}" height="{SIZE}" fill="url(#bg)"/>
+    <path d="M-72 156 C180 84 326 170 522 316 C708 455 828 514 1110 430 L1110 0 L-72 0 Z" fill="url(#auraA)"/>
+    <path d="M1060 208 C790 306 720 420 566 620 C404 830 220 898 -86 768 L-86 1080 L1060 1080 Z" fill="url(#auraB)"/>
+    <path d="M126 962 C296 698 436 610 646 488 C812 392 908 300 1078 72 L1078 1080 L126 1080 Z" fill="url(#auraC)"/>
+    <rect width="{SIZE}" height="{SIZE}" filter="url(#grain)" opacity="0.8"/>
+    <rect x="1.5" y="1.5" width="1021" height="1021" rx="228" ry="228" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+
+    <g transform="rotate(-18 512 520)" opacity="0.68">
+      <ellipse cx="512" cy="520" rx="364" ry="128" fill="none" stroke="#fff1e8" stroke-opacity="0.36" stroke-width="7"/>
+      <ellipse cx="512" cy="520" rx="332" ry="104" fill="none" stroke="#9b7cff" stroke-opacity="0.18" stroke-width="4"/>
+    </g>
+
+    <polygon points="512,144 682,220 818,428 734,732 518,884 300,766 204,522 300,272"
+      fill="#d8866f" opacity="0.32" filter="url(#softBlur)"/>
+
+    <g filter="url(#shadow)">
+      <g>
+        <polygon points="512,144 682,220 818,428 734,732 518,884 300,766 204,522 300,272" fill="#523a87"/>
+        <polygon points="512,144 300,272 430,484" fill="#b796ff"/>
+        <polygon points="512,144 682,220 598,470 430,484" fill="#dfabff"/>
+        <polygon points="682,220 818,428 598,470" fill="#8869ff"/>
+        <polygon points="818,428 734,732 598,470" fill="#5f4bb7"/>
+        <polygon points="734,732 518,884 520,590 598,470" fill="#c45779"/>
+        <polygon points="518,884 300,766 430,484 520,590" fill="#482f6f"/>
+        <polygon points="300,766 204,522 430,484" fill="#332a5c"/>
+        <polygon points="204,522 300,272 430,484" fill="#7453c6"/>
+        <polygon points="430,484 598,470 520,590" fill="#ffb792" opacity="0.96"/>
+        <polygon points="430,484 520,590 300,766" fill="#704090" opacity="0.96"/>
+        <polygon points="312,268 492,168 426,404 274,512" fill="#ffffff" opacity="0.18"/>
+        <polygon points="506,156 640,224 588,324 436,414" fill="#ffe9dc" opacity="0.2"/>
+        <polyline points="512,144 682,220 818,428 734,732 518,884 300,766 204,522 300,272 512,144"
+          fill="none" stroke="#fff0e8" stroke-opacity="0.54" stroke-width="5" stroke-linejoin="round"/>
+        <g fill="none" stroke="#fff8ef" stroke-opacity="0.3" stroke-width="4" stroke-linecap="round">
+          <line x1="512" y1="144" x2="430" y2="484"/>
+          <line x1="682" y1="220" x2="598" y2="470"/>
+          <line x1="818" y1="428" x2="598" y2="470"/>
+          <line x1="734" y1="732" x2="520" y2="590"/>
+          <line x1="518" y1="884" x2="520" y2="590"/>
+          <line x1="300" y1="766" x2="430" y2="484"/>
+          <line x1="204" y1="522" x2="430" y2="484"/>
+          <line x1="430" y1="484" x2="598" y2="470"/>
+          <line x1="430" y1="484" x2="520" y2="590"/>
+          <line x1="598" y1="470" x2="520" y2="590"/>
+        </g>
+      </g>
+    </g>
+
+    <circle cx="798" cy="262" r="35" fill="#f8f3e8" opacity="0.96"/>
+    <circle cx="798" cy="262" r="47" fill="#f8f3e8" opacity="0.24" filter="url(#softBlur)"/>
+    <circle cx="786" cy="250" r="11" fill="#ffffff" opacity="0.92"/>
+  </g>
+</svg>'''
 
 
-def draw_planet(img: Image.Image, cx: int, cy: int, radius: int):
-    """Draw a shaded sphere — base coral with brighter upper-left highlight."""
-    planet = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    pp = planet.load()
-
-    # Light source: upper-left of planet
-    light_x = cx - radius * 0.4
-    light_y = cy - radius * 0.4
-
-    for y in range(cy - radius - 3, cy + radius + 3):
-        for x in range(cx - radius - 3, cx + radius + 3):
-            dx = x - cx
-            dy = y - cy
-            dist = (dx * dx + dy * dy) ** 0.5
-            if dist > radius:
-                continue
-
-            ldx = x - light_x
-            ldy = y - light_y
-            ldist = (ldx * ldx + ldy * ldy) ** 0.5
-
-            # Light intensity: 1.0 near light source, fading to 0 at far edge
-            light_t = max(0.0, 1.0 - ldist / (radius * 1.85))
-            # Smoothstep for natural falloff
-            light_t = light_t * light_t * (3 - 2 * light_t)
-
-            # Interpolate between CORAL (base/dark side) and CORAL_LIGHT (highlight)
-            r = int(CORAL[0] + (CORAL_LIGHT[0] - CORAL[0]) * light_t)
-            g = int(CORAL[1] + (CORAL_LIGHT[1] - CORAL[1]) * light_t)
-            b = int(CORAL[2] + (CORAL_LIGHT[2] - CORAL[2]) * light_t)
-
-            # Subtle terminator (where lit and unlit meet at the edge)
-            edge_t = dist / radius
-            if edge_t > 0.88 and light_t < 0.3:
-                fade = (edge_t - 0.88) / 0.12
-                r = int(r * (1 - fade * 0.35))
-                g = int(g * (1 - fade * 0.35))
-                b = int(b * (1 - fade * 0.35))
-
-            pp[x, y] = (r, g, b, 255)
-
-    return Image.alpha_composite(img, planet)
+def render_svg(svg: str, output: Path) -> None:
+    sips = require_sips()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile('w', suffix='.svg', delete=False) as handle:
+        handle.write(svg)
+        svg_path = Path(handle.name)
+    try:
+        subprocess.run([sips, '-s', 'format', 'png', str(svg_path), '--out', str(output)], check=True)
+    finally:
+        svg_path.unlink(missing_ok=True)
 
 
-def add_surface_texture(img: Image.Image, cx: int, cy: int, radius: int) -> Image.Image:
-    """Subtle dark patches suggesting planet surface."""
-    import random
-    random.seed(7)
-
-    tex = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    td = ImageDraw.Draw(tex)
-
-    for _ in range(12):
-        # Place patches in upper-light hemisphere mostly
-        angle = random.uniform(0.2 * math.pi, 1.4 * math.pi)
-        r_pos = random.uniform(radius * 0.15, radius * 0.70)
-        px = cx + int(r_pos * math.cos(angle))
-        py = cy + int(r_pos * math.sin(angle))
-        patch_r = random.randint(20, 50)
-        opacity = random.randint(30, 60)
-        td.ellipse(
-            [px - patch_r, py - patch_r, px + patch_r, py + patch_r],
-            fill=(70, 35, 22, opacity),
-        )
-
-    tex = tex.filter(ImageFilter.GaussianBlur(radius=12))
-    # NOTE: 별도 마스킹 없음. patches가 이미 planet radius 내부에 위치하고,
-    # blur가 12px이라 거의 새어나가지 않음. putalpha를 쓰면 알파가 *교체*되어
-    # 빈 영역이 (0,0,0,255)로 채워지는 버그 발생.
-    return Image.alpha_composite(img, tex)
+def resize_png(source: Path, size: int, output: Path) -> None:
+    sips = require_sips()
+    subprocess.run([sips, '-z', str(size), str(size), str(source), '--out', str(output)], check=True)
 
 
-def add_planet_glow(img: Image.Image, cx: int, cy: int, radius: int) -> Image.Image:
-    """Outer halo around planet."""
-    glow = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    halo_r = radius + 80
-    gd.ellipse(
-        [cx - halo_r, cy - halo_r, cx + halo_r, cy + halo_r],
-        fill=(*CORAL, 75),
-    )
-    glow = glow.filter(ImageFilter.GaussianBlur(radius=55))
-    return Image.alpha_composite(img, glow)
-
-
-def add_specular_highlight(img: Image.Image, cx: int, cy: int, radius: int) -> Image.Image:
-    """Bright highlight on upper-left of planet (specular)."""
-    from PIL import ImageChops
-
-    spec = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    sd = ImageDraw.Draw(spec)
-    spec_x = cx - int(radius * 0.4)
-    spec_y = cy - int(radius * 0.45)
-    spec_r = int(radius * 0.35)
-    sd.ellipse(
-        [spec_x - spec_r, spec_y - spec_r, spec_x + spec_r, spec_y + spec_r],
-        fill=(255, 230, 215, 110),
-    )
-    spec = spec.filter(ImageFilter.GaussianBlur(radius=35))
-
-    # 알파 *곱셈*으로 planet 외부만 잘라냄 (교체 X)
-    planet_mask = Image.new('L', img.size, 0)
-    ImageDraw.Draw(planet_mask).ellipse(
-        [cx - radius, cy - radius, cx + radius, cy + radius], fill=255
-    )
-    spec_alpha = spec.split()[-1]
-    new_alpha = ImageChops.multiply(spec_alpha, planet_mask)
-    spec.putalpha(new_alpha)
-
-    return Image.alpha_composite(img, spec)
-
-
-def add_ring(img: Image.Image, cx: int, cy: int) -> Image.Image:
-    """Tilted orbital ring."""
-    ring = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    rd = ImageDraw.Draw(ring)
-    ring_w = 460
-    ring_h = 100
-    rd.ellipse(
-        [cx - ring_w, cy - ring_h, cx + ring_w, cy + ring_h],
-        outline=(232, 230, 227, 170),
-        width=5,
-    )
-    ring = ring.rotate(-20, resample=Image.BICUBIC, center=(cx, cy))
-    return Image.alpha_composite(img, ring)
-
-
-def add_satellite(img: Image.Image, cx: int, cy: int) -> Image.Image:
-    """Small luminous moon on the upper-right."""
-    sat = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sat)
-    # Place on ring trajectory (matches ring rotation)
-    sx = cx + 380
-    sy = cy - 220
-    sat_r = 38
-    # body
-    sd.ellipse(
-        [sx - sat_r, sy - sat_r, sx + sat_r, sy + sat_r],
-        fill=SATELLITE + (255,),
-    )
-
-    # Halo
-    halo = sat.filter(ImageFilter.GaussianBlur(radius=12))
-    img = Image.alpha_composite(img, halo)
-    return Image.alpha_composite(img, sat)
-
-
-def make_icon() -> Image.Image:
-    cx, cy = SIZE // 2, SIZE // 2
-    planet_radius = 300
-
-    # 1. Background
-    img = make_background(SIZE)
-
-    # 2. Planet glow (BEHIND planet)
-    img = add_planet_glow(img, cx, cy, planet_radius)
-
-    # 3. Planet body
-    img = draw_planet(img, cx, cy, planet_radius)
-
-    # 4. Surface texture
-    img = add_surface_texture(img, cx, cy, planet_radius)
-
-    # 5. Specular highlight
-    img = add_specular_highlight(img, cx, cy, planet_radius)
-
-    # 6. Orbital ring
-    img = add_ring(img, cx, cy)
-
-    # 7. Satellite
-    img = add_satellite(img, cx, cy)
-
-    # 8. Apply squircle mask
-    mask = make_squircle_mask(SIZE, CORNER_RADIUS)
-    final = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
-    final.paste(img, (0, 0), mask)
-
-    return final
-
-
-def main():
+def main() -> None:
     print('Generating app icon...')
-    icon = make_icon()
-    icon.save('build/icon.png', 'PNG')
-    print(f'  ✓ build/icon.png  ({SIZE}x{SIZE})')
+    icon = Path('build/icon.png')
+    render_svg(icon_svg(), icon)
+    print(f'  ✓ {icon}  ({SIZE}x{SIZE})')
 
-    # Also produce smaller sizes for reference / quick checks
     for sz in [512, 256, 128, 64]:
-        s = icon.resize((sz, sz), Image.LANCZOS)
-        s.save(f'build/icon-{sz}.png', 'PNG')
-        print(f'  ✓ build/icon-{sz}.png')
+        out = Path(f'build/icon-{sz}.png')
+        resize_png(icon, sz, out)
+        print(f'  ✓ {out}')
 
 
 if __name__ == '__main__':
